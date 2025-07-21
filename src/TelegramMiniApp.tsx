@@ -44,7 +44,7 @@ const TelegramMiniApp: React.FC = () => {
   }, []);
 
   // Если тестовое значение есть, эмулируем userId и сразу продолжаем
-  const isDevTest = process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE;
+//   const isDevTest = process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE;
 //   useEffect(() => {
 //     if (isDevTest && !userId) {
 //       setUserId(1001); // Тестовый userId
@@ -77,11 +77,11 @@ const TelegramMiniApp: React.FC = () => {
     return (
       <div>
         Загрузка...
-        {isDevTest && (
+        {/* {isDevTest && (
           <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
             [dev] TEST_VALUE: {process.env.REACT_APP_TEST_VALUE}
           </div>
-        )}
+        )} */}
       </div>
     );
   }
