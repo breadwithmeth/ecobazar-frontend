@@ -77,7 +77,8 @@ const TelegramMiniApp: React.FC = () => {
     return (
       <div>
         Загрузка...<br />
-        <span style={{ color: '#888', fontSize: 12 }}>API_URL: {API_URL || 'не определён'}</span>
+        <span style={{ color: '#888', fontSize: 12 }}>API_URL: {API_URL || 'не определён'}</span><br />
+        <span style={{ color: '#888', fontSize: 12 }}>userId: —</span>
       </div>
     );
   }
@@ -90,11 +91,15 @@ const TelegramMiniApp: React.FC = () => {
     return (
       <>
         <LoginPage userId={userId} />
+        <div style={{ color: '#888', textAlign: 'center', marginTop: 8, fontSize: 12 }}>
+          userId: {userId}
+        </div>
         {authError && (
           <div style={{ color: 'red', textAlign: 'center', marginTop: 12 }}>
             {authError}
             <br />
-            <span style={{ color: '#888', fontSize: 12 }}>API_URL: {API_URL || 'не определён'}</span>
+            <span style={{ color: '#888', fontSize: 12 }}>API_URL: {API_URL || 'не определён'}</span><br />
+            <span style={{ color: '#888', fontSize: 12 }}>userId: {userId}</span>
           </div>
         )}
       </>
