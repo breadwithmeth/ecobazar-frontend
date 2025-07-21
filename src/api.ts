@@ -1,3 +1,7 @@
+const API_URL = process.env.REACT_APP_API_URL;
+
+
+
 // Обновить цену товара (только ADMIN)
 export async function apiUpdateProductPrice(token: string, productId: number, price: number) {
   const resp = await fetch(`${API_URL}/products/${productId}/price`, {
@@ -26,7 +30,7 @@ export async function apiUpdateUser(token: string, data: { name: string; phone_n
 }
 // Обновить статус заказа (только ADMIN)
 export async function apiUpdateOrderStatus(token: string, orderId: number, status: string) {
-  const resp = await fetch(`http://localhost:4000/api/orders/${orderId}/status`, {
+  const resp = await fetch(`${API_URL}/orders/${orderId}/status`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -39,7 +43,7 @@ export async function apiUpdateOrderStatus(token: string, orderId: number, statu
 }
 // Получить все заказы (только ADMIN)
 export async function apiGetAllOrders(token: string) {
-  const resp = await fetch('http://localhost:4000/api/orders/all', {
+  const resp = await fetch(`${API_URL}/orders/all`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -49,7 +53,7 @@ export async function apiGetAllOrders(token: string) {
 }
 // Добавить товар (только ADMIN)
 export async function apiAddProduct(token: string, prod: { name: string; price: number; image?: string; storeId: number; categoryId?: number }) {
-  const resp = await fetch('http://localhost:4000/api/products', {
+  const resp = await fetch(`${API_URL}/products`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -67,7 +71,6 @@ export async function apiGetStores(token: string) {
   if (!r.ok) throw new Error('Ошибка загрузки магазинов');
   return r.json();
 }
-const API_URL = 'http://localhost:4000/api';
 
 export async function apiGetCategories(token: string) {
   const r = await fetch(`${API_URL}/categories`, {

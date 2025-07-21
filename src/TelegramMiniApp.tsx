@@ -4,7 +4,7 @@ import LoginPage from './pages/LoginPage';
 import CatalogPage from './pages/CatalogPage';
 import { apiAuth } from './api';
 
-const API_URL = 'http://localhost:4000/api';
+const API_URL = process.env.REACT_APP_API_URL;
 
 // Типизация для Telegram WebApp API
 interface TelegramWebApp {
@@ -45,11 +45,11 @@ const TelegramMiniApp: React.FC = () => {
 
   // Если тестовое значение есть, эмулируем userId и сразу продолжаем
   const isDevTest = process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE;
-  useEffect(() => {
-    if (isDevTest && !userId) {
-      setUserId(1001); // Тестовый userId
-    }
-  }, [isDevTest, userId]);
+//   useEffect(() => {
+//     if (isDevTest && !userId) {
+//       setUserId(1001); // Тестовый userId
+//     }
+//   }, [isDevTest, userId]);
 
   // Переход к странице входа после онбординга, если userId есть
   useEffect(() => {

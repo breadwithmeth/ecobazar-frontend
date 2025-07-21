@@ -22,7 +22,6 @@ interface ProfilePageProps {
   onNavigate: (page: Page) => void;
 }
 
-const API_URL = 'http://localhost:4000/api';
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
   const [user, setUser] = useState<User | null>(null);
