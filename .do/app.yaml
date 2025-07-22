@@ -1,0 +1,21 @@
+name: ecobazar-frontend
+services:
+- name: web
+  source_dir: /
+  github:
+    repo: breadwithmeth/ecobazar-frontend
+    branch: main
+  run_command: serve -s build -l 3000
+  build_command: npm run build
+  environment_slug: node-js
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  routes:
+  - path: /
+  envs:
+  - key: NODE_ENV
+    value: production
+  - key: REACT_APP_API_URL
+    value: https://eco-b-6sgyz.ondigitalocean.app/api
+  - key: REACT_APP_TEST_VALUE
+    value: "2"

@@ -64,12 +64,56 @@ npm run lint
 
 ## Развертывание
 
-### DigitalOcean App Platform
+### DigitalOcean App Platform (рекомендуется)
 
-1. Подключите репозиторий к App Platform
-2. Установите переменные окружения в настройках:
-   - `REACT_APP_API_URL=https://your-api-domain.com/api`
-3. App Platform автоматически соберет и развернет приложение
+1. **Автоматический деплой через GitHub**:
+   ```bash
+   # Убедитесь что код загружен в GitHub репозиторий
+   git add .
+   git commit -m "Prepare for deployment"
+   git push origin main
+   ```
+
+2. **Создание приложения в DigitalOcean**:
+   - Войдите в [DigitalOcean Control Panel](https://cloud.digitalocean.com)
+   - Перейдите в раздел Apps
+   - Нажмите "Create App"
+   - Выберите GitHub и ваш репозиторий `ecobazar-frontend`
+   - Выберите ветку `main`
+
+3. **Настройка переменных окружения**:
+   В настройках App добавьте:
+   ```
+   NODE_ENV=production
+   REACT_APP_API_URL=https://your-api-domain.com/api
+   REACT_APP_TEST_VALUE=2
+   ```
+
+4. **Деплой**:
+   App Platform автоматически:
+   - Установит зависимости (`npm install`)
+   - Соберет приложение (`npm run build`)
+   - Развернет статические файлы
+   - Предоставит HTTPS URL
+
+### Используя app.yaml (автоматическая настройка)
+
+1. Файл `.do/app.yaml` уже настроен в проекте
+2. При создании приложения выберите "Import from app spec"
+3. Загрузите `.do/app.yaml`
+4. Измените переменные окружения под ваши нужды
+
+### Docker деплой
+
+1. **Сборка образа**:
+   ```bash
+   docker build -t ecobazar-frontend .
+   ```
+
+2. **Запуск контейнера**:
+   ```bash
+   docker run -p 80:80 ecobazar-frontend
+   ```
 
 ### Другие платформы
 

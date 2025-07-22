@@ -14,6 +14,7 @@ interface TelegramWebApp {
       username?: string;
     };
   };
+  ready?: () => void;
 }
 
 declare global {
@@ -33,6 +34,7 @@ const TelegramMiniApp: React.FC = () => {
   const [authError, setAuthError] = useState('');
   const [page, setPage] = useState<Page>('onboarding');
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     console.log('TelegramMiniApp: Initial load');
@@ -70,42 +72,42 @@ const TelegramMiniApp: React.FC = () => {
     if (window.Telegram?.WebApp) {
       try {
         // Уведомляем Telegram что приложение готово
-        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.ready?.();
         console.log('Telegram WebApp ready() called');
       } catch (e) {
         console.log('Error calling Telegram WebApp ready():', e);
       }
     }
 
-    // Пытаемся получить данные сразу
-    if (!checkTelegramData()) {
-      // Если не получилось, пытаемся через таймаут (Telegram WebApp может загружаться с задержкой)
-      const timeout = setTimeout(() => {
-        console.log('Checking Telegram data after timeout...');
-        if (!checkTelegramData()) {
-          console.log('Still no Telegram data, checking if we are in development mode...');
-          // В продакшене, если через 3 секунды всё ещё нет данных Telegram, переходим к тестовому режиму
-          if (process.env.NODE_ENV === 'production') {
-            console.log('Production mode: using fallback userId for testing');
-            setUserId(1232676917); // Fallback для тестирования в продакшене
-          }
+    // Проверяем данные Telegram немедленно
+    const foundUser = checkTelegramData();
+    
+    // Устанавливаем таймер для финальной проверки
+    const timeout = setTimeout(() => {
+      console.log('Final check after timeout...');
+      
+      if (!foundUser && !checkTelegramData()) {
+        console.log('Still no Telegram data after timeout');
+        
+        // В режиме разработки с тестовым значением используем fallback
+        if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE) {
+          console.log('Development mode: using test userId');
+          setUserId(1232676917);
+        } else if (process.env.NODE_ENV === 'production') {
+          // В продакшене пытаемся использовать fallback для тестирования
+          console.log('Production mode: using fallback userId for testing');
+          setUserId(1232676917);
         }
-      }, 3000); // Увеличили до 3 секунд
+      }
+      
+      // Отмечаем что инициализация завершена
+      setIsInitialized(true);
+    }, 2000); // Уменьшили время ожидания до 2 секунд
 
-      return () => clearTimeout(timeout);
-    }
+    return () => clearTimeout(timeout);
   }, []);
 
-  // Если тестовое значение есть, эмулируем userId и сразу продолжаем
-  const isDevTest = process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE;
-  useEffect(() => {
-    if (isDevTest && !userId) {
-      console.log('Setting test userId: 1232676917');
-      setUserId(1232676917); // Тестовый userId
-    }
-  }, [isDevTest, userId]);
-
-  console.log('TelegramMiniApp state:', { userId, token: token ? token.substring(0, 10) + '...' : null, page });
+  console.log('TelegramMiniApp state:', { userId, token: token ? token.substring(0, 10) + '...' : null, page, isInitialized });
 
   // Переход к странице входа после онбординга, если userId есть
   useEffect(() => {
@@ -135,7 +137,7 @@ const TelegramMiniApp: React.FC = () => {
     }
   }, [userId, token, page]);
 
-  if (!userId) {
+  if (!userId && !isInitialized) {
     return (
       <div style={{ padding: 20, fontFamily: 'Arial, sans-serif' }}>
         <div style={{ fontSize: 18, marginBottom: 16 }}>🔄 Загрузка EcoBazar...</div>
@@ -148,28 +150,46 @@ const TelegramMiniApp: React.FC = () => {
         <div style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
           API_URL: {process.env.REACT_APP_API_URL || 'не определён'}
         </div>
+      </div>
+    );
+  }
+
+  if (!userId && isInitialized) {
+    return (
+      <div style={{ padding: 20, fontFamily: 'Arial, sans-serif' }}>
+        <div style={{ fontSize: 18, marginBottom: 16, color: '#f44336' }}>
+          ⚠️ Ошибка инициализации
+        </div>
+        <div style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+          Не удалось получить данные пользователя из Telegram
+        </div>
+        <div style={{ fontSize: 10, color: '#888', lineHeight: 1.4, whiteSpace: 'pre-line', marginBottom: 16 }}>
+          {debugInfo}
+        </div>
         
-        {/* Кнопка для тестирования в случае проблем */}
-        {process.env.NODE_ENV === 'development' && (
-          <button
-            onClick={() => {
-              console.log('Manual test userId set');
-              setUserId(1232676917);
-            }}
-            style={{
-              marginTop: 16,
-              background: '#2196F3',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              padding: '8px 16px',
-              fontSize: 14,
-              cursor: 'pointer'
-            }}
-          >
-            🧪 Тестовый вход (dev)
-          </button>
-        )}
+        {/* Кнопка для тестирования */}
+        <button
+          onClick={() => {
+            console.log('Manual test userId set');
+            setUserId(1232676917);
+          }}
+          style={{
+            background: '#2196F3',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            padding: '12px 24px',
+            fontSize: 16,
+            cursor: 'pointer',
+            width: '100%'
+          }}
+        >
+          🧪 Продолжить в тестовом режиме
+        </button>
+        
+        <div style={{ marginTop: 16, fontSize: 12, color: '#666' }}>
+          API_URL: {process.env.REACT_APP_API_URL || 'не определён'}
+        </div>
       </div>
     );
   }
@@ -178,7 +198,7 @@ const TelegramMiniApp: React.FC = () => {
     return <OnboardingPage onNext={() => setPage('login')} />;
   }
 
-  if (page === 'login') {
+  if (page === 'login' && userId) {
     return (
       <>
         <LoginPage userId={userId} />
