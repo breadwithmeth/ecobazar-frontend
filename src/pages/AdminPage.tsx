@@ -2,28 +2,62 @@ import React, { useState, useEffect } from 'react';
 import AdminUsers from '../admin/AdminUsers';
 import AdminProducts from '../admin/AdminProducts';
 import AdminOrders from '../admin/AdminOrders';
+import AdminCouriers from '../admin/AdminCouriers';
+import AdminAnalytics from '../admin/AdminAnalytics';
+import AdminCategories from '../admin/AdminCategories';
+import AdminStock from '../admin/AdminStock';
 
-import { apiGetProducts, apiGetStores, apiAddProduct, apiGetCategories, apiGetAllOrders } from '../api';
-
-import { apiUpdateOrderStatus } from '../api';
+import { 
+  apiGetProducts, 
+  apiGetStores, 
+  apiCreateProduct, 
+  apiGetCategories, 
+  apiGetAdminOrders,
+  apiUpdateOrderStatusAdmin,
+  apiCreateCategory,
+  apiUpdateCategory,
+  apiDeleteCategory,
+  apiAssignCourier,
+  apiUpdateStock
+} from '../api';
 
 const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, token }) => {
+  console.log('AdminPage rendered with token:', token ? `${token.substring(0, 10)}...` : 'undefined');
+  
   // Обновление статуса заказа
   const onStatusChange = async (orderId: number, status: string) => {
     if (!token) return;
     try {
-      await apiUpdateOrderStatus(token, orderId, status);
+      await apiUpdateOrderStatusAdmin(token, orderId, status);
       // После успешного изменения статуса — обновить список заказов
       setOrdersLoading(true);
-      const updatedOrders = await apiGetAllOrders(token);
-      setOrders(updatedOrders);
+      const updatedOrders = await apiGetAdminOrders(token);
+      setOrders(updatedOrders.orders);
     } catch (e: any) {
       setOrdersError(e.message || 'Ошибка обновления статуса');
     } finally {
       setOrdersLoading(false);
     }
   };
-  const [section, setSection] = useState<'users' | 'products' | 'orders' | 'categories' | 'stores' | null>(null);
+
+  // Назначение курьера на заказ
+  const onAssignCourier = async (orderId: number, courierId: number) => {
+    if (!token) return;
+    try {
+      console.log('Assigning courier:', { orderId, courierId });
+      await apiAssignCourier(token, courierId, orderId);
+      // После успешного назначения курьера — обновить список заказов
+      setOrdersLoading(true);
+      const updatedOrders = await apiGetAdminOrders(token);
+      setOrders(updatedOrders.orders);
+    } catch (e: any) {
+      console.error('Error assigning courier:', e);
+      setOrdersError(e.message || 'Ошибка назначения курьера');
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+  const [section, setSection] = useState<'users' | 'products' | 'orders' | 'categories' | 'stores' | 'couriers' | 'analytics' | 'stock' | null>(null);
 
   // Состояния для товаров и магазинов
   const [products, setProducts] = useState<any[]>([]);
@@ -32,6 +66,11 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
   const [prodError, setProdError] = useState('');
   const [newProd, setNewProd] = useState({ name: '', price: '', image: '', storeId: '', categoryId: '' });
   const [categories, setCategories] = useState<any[]>([]);
+  const [catLoading, setCatLoading] = useState(false);
+  const [catError, setCatError] = useState('');
+  const [newCat, setNewCat] = useState('');
+  const [editCatId, setEditCatId] = useState<number | null>(null);
+  const [editCatName, setEditCatName] = useState('');
   const [orders, setOrders] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
@@ -47,21 +86,40 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
     if (section === 'products' && token) {
       setProdLoading(true);
       apiGetProducts(token)
-        .then(setProducts)
+        .then(data => setProducts(data.products))
         .catch(() => setProducts([]))
         .finally(() => setProdLoading(false));
       apiGetStores(token)
-        .then(setStores)
+        .then(data => setStores(data.stores))
         .catch(() => setStores([]));
       apiGetCategories(token)
         .then(setCategories)
         .catch(() => setCategories([]));
     }
+    if (section === 'categories' && token) {
+      setCatLoading(true);
+      setCatError('');
+      apiGetCategories(token)
+        .then(setCategories)
+        .catch((e: any) => {
+          setCatError(e.message || 'Ошибка загрузки категорий');
+          setCategories([]);
+        })
+        .finally(() => setCatLoading(false));
+    }
     if (section === 'orders' && token) {
       setOrdersLoading(true);
-      apiGetAllOrders(token)
-        .then(setOrders)
-        .catch(e => setOrdersError(e.message || 'Ошибка'))
+      setOrdersError('');
+      console.log('Loading orders...');
+      apiGetAdminOrders(token)
+        .then((data: any) => {
+          console.log('Orders API response:', data);
+          setOrders(data.orders || data || []);
+        })
+        .catch((e: any) => {
+          console.error('Orders API error:', e);
+          setOrdersError(e.message || 'Ошибка загрузки заказов');
+        })
         .finally(() => setOrdersLoading(false));
     }
   }, [section, token]);
@@ -72,7 +130,7 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
     try {
       setProdLoading(true);
       setProdError('');
-      const added = await apiAddProduct(token, {
+      const added = await apiCreateProduct(token, {
         name: newProd.name,
         price: Number(newProd.price),
         image: newProd.image || undefined,
@@ -87,6 +145,54 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
       setProdLoading(false);
     }
   };
+  
+  // Функции для работы с категориями
+  const onAddCategory = async () => {
+    if (!newCat.trim() || !token) return;
+    setCatLoading(true);
+    setCatError('');
+    try {
+      const added = await apiCreateCategory(token, newCat.trim());
+      setCategories(prev => [...prev, added]);
+      setNewCat('');
+    } catch (e: any) {
+      setCatError(e.message || 'Ошибка создания категории');
+    } finally {
+      setCatLoading(false);
+    }
+  };
+
+  const onEditCategory = async (id: number) => {
+    if (!editCatName.trim() || !token) return;
+    setCatLoading(true);
+    setCatError('');
+    try {
+      const updated = await apiUpdateCategory(token, id, editCatName.trim());
+      setCategories(prev => prev.map(cat => cat.id === id ? updated : cat));
+      setEditCatId(null);
+      setEditCatName('');
+    } catch (e: any) {
+      setCatError(e.message || 'Ошибка обновления категории');
+    } finally {
+      setCatLoading(false);
+    }
+  };
+
+  const onDeleteCategory = async (id: number) => {
+    if (!token) return;
+    if (!window.confirm('Удалить категорию? Это может повлиять на связанные товары.')) return;
+    setCatLoading(true);
+    setCatError('');
+    try {
+      await apiDeleteCategory(token, id);
+      setCategories(prev => prev.filter(cat => cat.id !== id));
+    } catch (e: any) {
+      setCatError(e.message || 'Ошибка удаления категории');
+    } finally {
+      setCatLoading(false);
+    }
+  };
+
   const onShowStock = () => {};
   const onStockMove = () => {};
   const onCloseStock = () => {};
@@ -101,43 +207,58 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
           <button onClick={() => setSection('products')} style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>Управление товарами</button>
           <button onClick={() => setSection('orders')} style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>Управление заказами</button>
           <button onClick={() => setSection('categories')} style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>Управление категориями</button>
+          <button onClick={() => setSection('stock')} style={{ background: '#2196F3', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>📦 Управление складом</button>
           <button onClick={() => setSection('stores')} style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>Управление магазинами</button>
+          <button onClick={() => setSection('couriers')} style={{ background: '#FF9800', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>🚚 Управление курьерами</button>
+          <button onClick={() => setSection('analytics')} style={{ background: '#9C27B0', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 17, padding: '14px 0', cursor: 'pointer' }}>📊 Аналитика и отчеты</button>
         </div>
       )}
-      {section === 'users' && <AdminUsers onBack={() => setSection(null)} />}
-      {section === 'products' && (
+      {section === 'users' && <AdminUsers onBack={() => setSection(null)} token={token} />}
+      {section === 'products' && token && (
         <AdminProducts
-          products={products}
-          stores={stores}
-          categories={categories}
-          loading={prodLoading}
-          error={prodError}
-          newProd={newProd}
-          onAdd={onAdd}
-          setNewProd={setNewProd}
-          onShowStock={onShowStock}
-          stockInfo={stockInfo}
-          stockHistory={stockHistory}
-          stockLoading={stockLoading}
-          stockError={stockError}
-          moveQty={moveQty}
-          moveType={moveType}
-          setMoveQty={setMoveQty}
-          setMoveType={setMoveType}
-          onStockMove={onStockMove}
-          onCloseStock={onCloseStock}
+          token={token}
           onBack={() => setSection(null)}
-          token={token ?? ''}
         />
       )}
-      {section === 'orders' && (
+      {section === 'orders' && token && (
         <AdminOrders
           orders={orders}
           loading={ordersLoading}
           error={ordersError}
           onBack={() => setSection(null)}
           onStatusChange={onStatusChange}
+          onAssignCourier={onAssignCourier}
+          token={token}
         />
+      )}
+      {section === 'categories' && token && (
+        <AdminCategories
+          categories={categories}
+          loading={catLoading}
+          error={catError}
+          newCat={newCat}
+          editId={editCatId}
+          editName={editCatName}
+          onAdd={onAddCategory}
+          onEdit={onEditCategory}
+          onDelete={onDeleteCategory}
+          setNewCat={setNewCat}
+          setEditId={setEditCatId}
+          setEditName={setEditCatName}
+          onBack={() => setSection(null)}
+        />
+      )}
+      {section === 'stock' && token && (
+        <AdminStock
+          token={token}
+          onBack={() => setSection(null)}
+        />
+      )}
+      {section === 'couriers' && token && (
+        <AdminCouriers token={token} />
+      )}
+      {section === 'analytics' && token && (
+        <AdminAnalytics token={token} />
       )}
       {/* ...existing code for categories, stores... */}
     </div>

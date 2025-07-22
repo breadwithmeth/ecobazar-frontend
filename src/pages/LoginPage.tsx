@@ -1,5 +1,5 @@
 
-import BottomBar from '../components/BottomBar';
+// import BottomBar from '../components/BottomBar';
 
 const LoginPage: React.FC<{ userId: number }> = ({ userId }) => (
   <div style={{

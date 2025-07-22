@@ -4,8 +4,6 @@ import LoginPage from './pages/LoginPage';
 import CatalogPage from './pages/CatalogPage';
 import { apiAuth } from './api';
 
-const API_URL = process.env.REACT_APP_API_URL;
-
 // Типизация для Telegram WebApp API
 interface TelegramWebApp {
   initDataUnsafe?: {
@@ -44,12 +42,15 @@ const TelegramMiniApp: React.FC = () => {
   }, []);
 
   // Если тестовое значение есть, эмулируем userId и сразу продолжаем
-//   const isDevTest = process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE;
-//   useEffect(() => {
-//     if (isDevTest && !userId) {
-//       setUserId(1001); // Тестовый userId
-//     }
-//   }, [isDevTest, userId]);
+  const isDevTest = process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE;
+  useEffect(() => {
+    if (isDevTest && !userId) {
+      console.log('Setting test userId: 1001');
+      setUserId(1001); // Тестовый userId
+    }
+  }, [isDevTest, userId]);
+
+  console.log('TelegramMiniApp state:', { userId, token: token ? token.substring(0, 10) + '...' : null, page });
 
   // Переход к странице входа после онбординга, если userId есть
   useEffect(() => {
@@ -61,15 +62,21 @@ const TelegramMiniApp: React.FC = () => {
   // Авторизация по userId
   useEffect(() => {
     if (userId && !token && page === 'login') {
+      console.log('Starting auth process for userId:', userId);
       setAuthError('');
       apiAuth(String(userId))
         .then(data => {
+          console.log('Auth response:', data);
           if (data.token) {
             setToken(data.token);
+            console.log('Token set:', data.token.substring(0, 10) + '...');
             setPage('catalog');
           } else throw new Error('Нет токена');
         })
-        .catch(e => setAuthError(e.message));
+        .catch(e => {
+          console.error('Auth error:', e);
+          setAuthError(e.message);
+        });
     }
   }, [userId, token, page]);
 
@@ -77,7 +84,7 @@ const TelegramMiniApp: React.FC = () => {
     return (
       <div>
         Загрузка...<br />
-        <span style={{ color: '#888', fontSize: 12 }}>API_URL: {API_URL || 'не определён'}</span><br />
+        <span style={{ color: '#888', fontSize: 12 }}>API_URL: {process.env.REACT_APP_API_URL || 'не определён'}</span><br />
         <span style={{ color: '#888', fontSize: 12 }}>userId: —</span>
       </div>
     );
@@ -94,11 +101,32 @@ const TelegramMiniApp: React.FC = () => {
         <div style={{ color: '#888', textAlign: 'center', marginTop: 8, fontSize: 12 }}>
           userId: {userId}
         </div>
+        {process.env.NODE_ENV === 'development' && (
+          <div style={{ textAlign: 'center', marginTop: 12 }}>
+            <button 
+              onClick={() => {
+                setToken(null);
+                setPage('login');
+              }}
+              style={{ 
+                padding: '8px 16px', 
+                background: '#2196F3', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: 8, 
+                fontSize: 14, 
+                cursor: 'pointer' 
+              }}
+            >
+              🔄 Повторить авторизацию
+            </button>
+          </div>
+        )}
         {authError && (
           <div style={{ color: 'red', textAlign: 'center', marginTop: 12 }}>
             {authError}
             <br />
-            <span style={{ color: '#888', fontSize: 12 }}>API_URL: {API_URL || 'не определён'}</span><br />
+            <span style={{ color: '#888', fontSize: 12 }}>API_URL: {process.env.REACT_APP_API_URL || 'не определён'}</span><br />
             <span style={{ color: '#888', fontSize: 12 }}>userId: {userId}</span>
           </div>
         )}

@@ -16,7 +16,7 @@ interface Address {
   address: string;
 }
 
-type Page = 'catalog' | 'profile' | 'cart';
+type Page = 'catalog' | 'profile' | 'cart' | 'admin';
 interface ProfilePageProps {
   token: string;
   onNavigate: (page: Page) => void;

@@ -1,10 +1,11 @@
 
 import { useEffect, useState, useRef } from "react";
-import { apiGetUser, apiGetCategories, apiGetProducts, apiGetAllOrders } from '../api';
+import { apiGetUser, apiGetCategories, apiGetProducts, apiGetMyOrders } from '../api';
 import ProfilePage from './ProfilePage';
 import CartPage from './CartPage';
 import BottomBar from '../components/BottomBar';
 import ProfileFillPage from './ProfileFillPage';
+import AdminPage from './AdminPage';
 
 interface OrderProduct {
   id: number;
@@ -59,7 +60,7 @@ interface CartItem {
   qty: number;
 }
 
-type Page = 'catalog' | 'profile' | 'cart';
+type Page = 'catalog' | 'profile' | 'cart' | 'admin';
 
 const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
   // Заказы пользователя
@@ -69,10 +70,11 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     setOrdersLoading(true);
-    apiGetAllOrders(token)
-      .then((data: Order[]) => {
+    apiGetMyOrders(token)
+      .then((data: any) => {
         // Исключаем доставленные
-        setOrders(data.filter((o: Order) => o.status !== 'delivered'));
+        const allOrders = Array.isArray(data) ? data : data.orders;
+        setOrders(allOrders.filter((o: Order) => o.status !== 'delivered'));
         setOrdersError('');
       })
       .catch((e: any) => setOrdersError(e.message))
@@ -80,11 +82,17 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
   }, [token]);
   const [page, setPage] = useState<Page>('catalog');
   const [showProfileFill, setShowProfileFill] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  
+  // Проверка, является ли пользователь администратором
+  const isAdmin = user && (user.role === 'ADMIN' || user.id === 1001);
+  
   // Проверка профиля пользователя при загрузке
   useEffect(() => {
     apiGetUser(token)
-      .then(user => {
-        if (!user.name || !user.phone_number) {
+      .then(userData => {
+        setUser(userData);
+        if (!userData.name || !userData.phone_number) {
           setShowProfileFill(true);
         }
       })
@@ -114,21 +122,14 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   // Поиск
   const [search, setSearch] = useState('');
-  const searchLower = search.trim().toLowerCase();
-  // Группировка товаров по categoryId с учетом поиска
-  const grouped = categories.map(cat => ({
-    ...cat,
-    products: products.filter(p => {
-      const matchCategory = (p as any).categoryId === cat.id;
-      const matchSearch = !searchLower || p.name.toLowerCase().includes(searchLower);
-      return matchCategory && matchSearch;
-    })
-  }));
-
-  // refs для секций категорий
-  const sectionRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
-  // активная категория
-  const [activeCategory, setActiveCategory] = useState<number | null>(null);
+  
+  // Добавляем категорию "Без категории" для товаров с categoryId: null
+  const allCategories = [
+    ...(categories || []),
+    { id: 0, name: 'Без категории' } // Специальная категория для товаров без категории
+  ];
+  // активная категория для фильтрации
+  const [filterCategory, setFilterCategory] = useState<number | null>(null); // для фильтрации API
   // ref для горизонтального скролла категорий
   const categoriesScrollRef = useRef<HTMLDivElement>(null);
   // refs для кнопок категорий
@@ -140,8 +141,12 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     apiGetCategories(token)
-      .then(setCategories)
-      .catch(e => setError(e.message));
+      .then(data => {
+        setCategories(data);
+      })
+      .catch(e => {
+        setError(e.message);
+      });
   }, [token]);
   useEffect(() => {
     const handleScroll = () => {
@@ -154,58 +159,45 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
         setShowHeader(true);
       }
       lastScroll.current = scrollY;
-
-      // определяем активную категорию по положению центра экрана (или чуть ниже header)
-      const headerHeight = 110;
-      const viewportMiddle = headerHeight + 40; // смещение чуть ниже header
-      let current: number | null = null;
-      for (const cat of grouped) {
-        const ref = sectionRefs.current[cat.id];
-        if (ref) {
-          const top = ref.getBoundingClientRect().top;
-          const bottom = ref.getBoundingClientRect().bottom;
-          if (top <= viewportMiddle && bottom > viewportMiddle) {
-            current = cat.id;
-            break;
-          }
-        }
-      }
-      // если ничего не найдено — fallback к первой видимой или последней выше header
-      if (!current) {
-        let firstVisible: number | null = null;
-        let lastAbove: number | null = null;
-        for (const cat of grouped) {
-          const ref = sectionRefs.current[cat.id];
-          if (ref) {
-            const top = ref.getBoundingClientRect().top;
-            if (top <= headerHeight) {
-              lastAbove = cat.id;
-            } else if (firstVisible === null) {
-              firstVisible = cat.id;
-            }
-          }
-        }
-        current = firstVisible ?? lastAbove ?? (grouped[0]?.id || null);
-      }
-      setActiveCategory(current);
     };
     window.addEventListener('scroll', handleScroll);
-    // вызвать при монтировании для инициализации activeCategory
-    setTimeout(handleScroll, 100);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [grouped]);
+  }, []);
 
   useEffect(() => {
-    apiGetProducts(token)
-      .then(setProducts)
+    setLoading(true);
+    
+    const filters: any = {};
+    
+    if (search) {
+      filters.search = search;
+    }
+    
+    if (filterCategory) {
+      filters.categoryId = filterCategory;
+    }
+    
+    // Добавляем сортировку по имени для удобства пользователей
+    filters.sortBy = 'name';
+    filters.sortOrder = 'asc';
+    
+    apiGetProducts(undefined, 1, 50, filters)
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setProducts(data);
+        } else {
+          setProducts(data.products || []);
+        }
+        setError('');
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, search, filterCategory]);
 
   // Центрировать выбранную категорию в списке
   useEffect(() => {
-    if (!activeCategory) return;
-    const btn = categoryBtnRefs.current[activeCategory];
+    if (!filterCategory) return;
+    const btn = categoryBtnRefs.current[filterCategory];
     const scroll = categoriesScrollRef.current;
     if (btn && scroll) {
       const btnRect = btn.getBoundingClientRect();
@@ -213,7 +205,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
       const offset = btnRect.left - scrollRect.left - scrollRect.width / 2 + btnRect.width / 2;
       scroll.scrollBy({ left: offset, behavior: 'smooth' });
     }
-  }, [activeCategory]);
+  }, [filterCategory]);
 
   if (loading) return <div style={{ textAlign: 'center', marginTop: 48 }}>Загрузка каталога...</div>;
   if (error) return <div style={{ color: 'red', textAlign: 'center', marginTop: 48 }}>{error}</div>;
@@ -222,6 +214,9 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   if (showProfileFill) {
     return <ProfileFillPage token={token} onDone={() => setShowProfileFill(false)} />;
+  }
+  if (page === 'admin' && isAdmin) {
+    return <AdminPage onBack={() => setPage('catalog')} token={token} />;
   }
   if (page === 'profile') {
     return <ProfilePage token={token} onNavigate={setPage} />;
@@ -260,6 +255,24 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
         }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '26px 0 12px 0', maxWidth: 420, margin: '0 auto', boxSizing: 'border-box', width: '100%' }}>
           <span style={{ fontWeight: 700, fontSize: 20, color: '#222' }}>Каталог</span>
+          {isAdmin && (
+            <button 
+              onClick={() => setPage('admin')}
+              style={{ 
+                background: '#FF5722', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: 8, 
+                padding: '6px 12px', 
+                fontSize: 12, 
+                fontWeight: 600, 
+                cursor: 'pointer',
+                marginLeft: 8
+              }}
+            >
+              🔧 Админ
+            </button>
+          )}
           <span style={{ fontSize: 20, marginLeft: 'auto', color: '#6BCB3D', cursor: 'pointer' }}>☰</span>
         </div>
         <div style={{ maxWidth: 420, margin: '0 auto', boxSizing: 'border-box', width: '100%', padding: '0 0 0 0' }}>
@@ -295,28 +308,51 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
           msOverflowStyle: 'none',
         }}
       >
-        {categories.map(cat => (
+        {/* Кнопка "Все товары" */}
+        <button
+          key="all"
+          type="button"
+          onClick={() => {
+            setFilterCategory(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          style={{
+            background: filterCategory === null ? '#6BCB3D' : '#fff',
+            color: filterCategory === null ? '#fff' : '#222',
+            border: 'none',
+            borderRadius: 16,
+            padding: '8px 18px',
+            fontWeight: 600,
+            fontSize: 15,
+            boxShadow: filterCategory === null ? '0 2px 8px rgba(107,203,61,0.08)' : 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+            transition: 'background 0.2s, color 0.2s',
+          }}
+        >
+          Все товары
+        </button>
+        
+        {allCategories.map(cat => (
           <button
             key={cat.id}
+            type="button"
             ref={el => { categoryBtnRefs.current[cat.id] = el; }}
             onClick={() => {
-              const ref = sectionRefs.current[cat.id];
-              if (ref) {
-                const rect = ref.getBoundingClientRect();
-                const scrollY = window.scrollY || window.pageYOffset;
-                const top = rect.top + scrollY - 110;
-                window.scrollTo({ top, behavior: 'smooth' });
-              }
+              setFilterCategory(cat.id);
             }}
             style={{
-              background: activeCategory === cat.id ? '#6BCB3D' : '#fff',
-              color: activeCategory === cat.id ? '#fff' : '#222',
+              background: filterCategory === cat.id ? '#6BCB3D' : '#fff',
+              color: filterCategory === cat.id ? '#fff' : '#222',
               border: 'none',
               borderRadius: 16,
               padding: '8px 18px',
               fontWeight: 600,
               fontSize: 15,
-              boxShadow: activeCategory === cat.id ? '0 2px 8px rgba(107,203,61,0.08)' : 'none',
+              boxShadow: filterCategory === cat.id ? '0 2px 8px rgba(107,203,61,0.08)' : 'none',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
@@ -351,7 +387,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
               marginBottom: 8,
             }}>
               <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: '#222' }}>Ваши заказы</div>
-              {orders.map((order: Order) => {
+              {(orders || []).map((order: Order) => {
                 // Найти последний статус по времени
                 let lastStatus = order.status;
                 if (Array.isArray(order.statuses) && order.statuses.length > 0) {
@@ -392,25 +428,18 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
           )}
         </div>
 
-        {/* Список товаров по категориям */}
-        {grouped.map((cat, idx) => cat.products.length > 0 && (
-          <div
-            key={cat.id}
-            ref={el => {
-              sectionRefs.current[cat.id] = el;
-            }}
-            style={{
-              marginBottom: 32,
-              paddingTop: idx === 0 ? 20 : 0, // добавить отступ для первой секции
-              paddingLeft: 2,
-              paddingRight: 2,
-            }}>
-            <div style={{ fontWeight: 700, fontSize: 18, color: '#222', margin: '18px 0 14px 0', display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 2 }}>
-              {cat.name}
-            </div>
+        {/* Список товаров */}
+        <div style={{ padding: '20px 2px' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>Загрузка...</div>
+          ) : error ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#f44336' }}>{error}</div>
+          ) : products.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>Товары не найдены</div>
+          ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-                  {cat.products.map(p => (
-                    <div key={p.id} style={{
+              {products.map(p => (
+                <div key={p.id} style={{
                   background: '#fff',
                   borderRadius: 18,
                   boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
@@ -439,6 +468,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', alignSelf: 'flex-end' }}>
                           <button
+                            type="button"
                             style={{
                               background: '#fff',
                               color: '#6BCB3D',
@@ -471,6 +501,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
                           </button>
                           <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 600, fontSize: 16 }}>{cartItem.qty}</span>
                           <button
+                            type="button"
                             style={{
                               background: '#6BCB3D',
                               color: '#fff',
@@ -506,6 +537,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
                     } else {
                       return (
                         <button
+                          type="button"
                           style={{
                             background: '#6BCB3D',
                             color: '#fff',
@@ -540,8 +572,8 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
                 </div>
               ))}
             </div>
-          </div>
-        ))}
+          )}
+        </div>
       </div>
       
 

@@ -1,5 +1,5 @@
 
-import BottomBar from '../components/BottomBar';
+// import BottomBar from '../components/BottomBar';
 
 const bgUrl = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80'; // можно заменить на свой
 

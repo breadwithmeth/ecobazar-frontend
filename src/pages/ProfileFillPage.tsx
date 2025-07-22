@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { apiGetUser, apiUpdateUser } from '../api';
+import { apiUpdateUser } from '../api';
 
 const ProfileFillPage: React.FC<{ token: string; onDone: () => void }> = ({ token, onDone }) => {
   const [name, setName] = useState('');

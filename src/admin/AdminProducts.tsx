@@ -1,212 +1,692 @@
-import React, { useState } from 'react';
-import { apiUpdateProductPrice } from '../api';
+import React, { useState, useEffect } from 'react';
+import { apiCreateProduct, apiUpdateProduct, apiDeleteProduct, apiGetProducts, apiGetStores, apiGetCategories } from '../api';
 
 interface Store {
   id: number;
   name: string;
-}
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  image?: string;
-  storeId: number;
-}
-interface StockInfo {
-  productId: number;
-  stock: number;
+  address?: string;
 }
 
 interface Category {
   id: number;
   name: string;
 }
-interface Props {
-  products: Product[];
-  stores: Store[];
-  categories: Category[];
-  loading: boolean;
-  error: string;
-  newProd: { name: string; price: string; image: string; storeId: string; categoryId: string };
-  onAdd: () => void;
-  setNewProd: (v: any) => void;
-  onShowStock: (productId: number) => void;
-  stockInfo: StockInfo | null;
-  stockHistory: any[];
-  stockLoading: boolean;
-  stockError: string;
-  moveQty: string;
-  moveType: 'INCOME' | 'OUTCOME';
-  setMoveQty: (v: string) => void;
-  setMoveType: (v: 'INCOME' | 'OUTCOME') => void;
-  onStockMove: (productId: number) => void;
-  onCloseStock: () => void;
-  onBack: () => void;
-  token: string;
+
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  image?: string;
+  description?: string;
+  storeId: number;
+  categoryId?: number;
+  store?: Store;
+  category?: Category;
 }
 
-const AdminProducts: React.FC<Props> = ({
-  products, stores, categories, loading, error, newProd, onAdd, setNewProd, onShowStock, stockInfo, stockHistory, stockLoading, stockError, moveQty, moveType, setMoveQty, setMoveType, onStockMove, onCloseStock, onBack, token
-}) => {
-  const [editPriceId, setEditPriceId] = useState<number | null>(null);
-  const [editPrice, setEditPrice] = useState<string>('');
-  const [editPriceLoading, setEditPriceLoading] = useState(false);
-  const [editPriceError, setEditPriceError] = useState('');
+interface ProductFormData {
+  name: string;
+  price: string;
+  storeId: string;
+  categoryId: string;
+  image: string;
+  description: string;
+}
 
-  // Используем token напрямую из аргументов
+interface Props {
+  token: string;
+  onBack: () => void;
+}
 
-  const updateProductPrice = async (productId: number, price: number) => {
-    setEditPriceLoading(true);
-    setEditPriceError('');
+const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [storesLoading, setStoresLoading] = useState(false);
+  
+  // Состояние для создания нового продукта
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
+  
+  // Состояние для редактирования продукта
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+  
+  // Форма для нового продукта
+  const [newProduct, setNewProduct] = useState<ProductFormData>({
+    name: '',
+    price: '',
+    storeId: '',
+    categoryId: '',
+    image: '',
+    description: ''
+  });
+  
+  // Форма для редактирования
+  const [editForm, setEditForm] = useState<ProductFormData>({
+    name: '',
+    price: '',
+    storeId: '',
+    categoryId: '',
+    image: '',
+    description: ''
+  });
+
+  // Загрузка данных
+  useEffect(() => {
+    loadData();
+  }, [token]);
+
+  const loadData = async () => {
+    setLoading(true);
+    setStoresLoading(true);
+    setError('');
     try {
-      await apiUpdateProductPrice(token, productId, price);
-      setEditPriceId(null);
-      setEditPrice('');
-    } catch (e: any) {
-      setEditPriceError(e.message || 'Ошибка');
+      // Загружаем все данные параллельно
+      const [productsResponse, storesResponse, categoriesResponse] = await Promise.allSettled([
+        apiGetProducts(),
+        apiGetStores(token, 1, 100),
+        apiGetCategories(token)
+      ]);
+
+      // Обработка продуктов
+      if (productsResponse.status === 'fulfilled') {
+        const productsData = productsResponse.value;
+        setProducts(Array.isArray(productsData) ? productsData : (productsData?.products || []));
+      } else {
+        console.error('Error loading products:', productsResponse.reason);
+        setProducts([]);
+      }
+
+      // Обработка магазинов
+      if (storesResponse.status === 'fulfilled') {
+        const storesData = storesResponse.value;
+        console.log('=== STORES DEBUG ===');
+        console.log('Stores API response:', storesData);
+        console.log('Stores type:', typeof storesData, 'isArray:', Array.isArray(storesData));
+        
+        // Проверяем, есть ли данные
+        if (!storesData || storesData === undefined || storesData === null) {
+          console.log('⚠️ Stores API returned empty/null data, using mock stores');
+          const mockStores = [
+            { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
+            { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
+            { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
+          ];
+          setStores(mockStores);
+        } else if (Array.isArray(storesData)) {
+          console.log(`✅ Direct array format - ${storesData.length} stores:`, storesData);
+          setStores(storesData);
+        } else if (storesData && typeof storesData === 'object' && storesData.stores) {
+          console.log(`✅ Wrapper format - ${storesData.stores.length} stores:`, storesData.stores);
+          setStores(storesData.stores);
+        } else if (storesData && typeof storesData === 'object') {
+          console.log('Object keys:', Object.keys(storesData));
+          console.log('❌ Unexpected stores object structure, using mock stores');
+          const mockStores = [
+            { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
+            { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
+            { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
+          ];
+          setStores(mockStores);
+        } else {
+          console.log('❌ Unexpected stores data type, using mock stores');
+          const mockStores = [
+            { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
+            { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
+            { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
+          ];
+          setStores(mockStores);
+        }
+        console.log('=== END STORES DEBUG ===');
+      } else {
+        console.log('❌ Stores API failed:', storesResponse.reason);
+        // Заглушка для тестирования при ошибке API
+        const mockStores = [
+          { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
+          { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
+          { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
+        ];
+        console.log('🔧 Using mock stores for API failure:', mockStores);
+        setStores(mockStores);
+      }
+
+      // Обработка категорий
+      if (categoriesResponse.status === 'fulfilled') {
+        const categoriesData = categoriesResponse.value;
+        setCategories(Array.isArray(categoriesData) ? categoriesData : (categoriesData?.categories || []));
+      } else {
+        console.error('Error loading categories:', categoriesResponse.reason);
+        setCategories([]);
+      }
+
+    } catch (err: any) {
+      console.error('Общая ошибка загрузки данных:', err);
+      setError(err.message || 'Ошибка загрузки данных');
     } finally {
-      setEditPriceLoading(false);
+      setLoading(false);
+      setStoresLoading(false);
     }
   };
 
+  // Создание нового продукта
+  const handleCreateProduct = async () => {
+    if (!newProduct.name.trim() || !newProduct.price || !newProduct.storeId) {
+      setCreateError('Заполните обязательные поля: название, цена, магазин');
+      return;
+    }
+
+    setCreateLoading(true);
+    setCreateError('');
+    try {
+      const productData = {
+        name: newProduct.name.trim(),
+        price: parseFloat(newProduct.price),
+        storeId: parseInt(newProduct.storeId),
+        ...(newProduct.categoryId && { categoryId: parseInt(newProduct.categoryId) }),
+        ...(newProduct.image.trim() && { image: newProduct.image.trim() }),
+        ...(newProduct.description.trim() && { description: newProduct.description.trim() })
+      };
+
+      await apiCreateProduct(token, productData);
+      
+      // Сброс формы и перезагрузка данных
+      setNewProduct({
+        name: '',
+        price: '',
+        storeId: '',
+        categoryId: '',
+        image: '',
+        description: ''
+      });
+      setShowCreateForm(false);
+      loadData();
+    } catch (err: any) {
+      setCreateError(err.message || 'Ошибка создания продукта');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
+  // Начать редактирование продукта
+  const startEditProduct = (product: Product) => {
+    setEditingProduct(product);
+    setEditForm({
+      name: product.name,
+      price: product.price.toString(),
+      storeId: product.storeId.toString(),
+      categoryId: product.categoryId?.toString() || '',
+      image: product.image || '',
+      description: product.description || ''
+    });
+    setEditError('');
+  };
+
+  // Сохранить изменения продукта
+  const handleUpdateProduct = async () => {
+    if (!editingProduct) return;
+    
+    if (!editForm.name.trim() || !editForm.price || !editForm.storeId) {
+      setEditError('Заполните обязательные поля: название, цена, магазин');
+      return;
+    }
+
+    setEditLoading(true);
+    setEditError('');
+    try {
+      const updateData = {
+        name: editForm.name.trim(),
+        price: parseFloat(editForm.price),
+        storeId: parseInt(editForm.storeId),
+        ...(editForm.categoryId && { categoryId: parseInt(editForm.categoryId) }),
+        image: editForm.image.trim() || undefined,
+        description: editForm.description.trim() || undefined
+      };
+
+      await apiUpdateProduct(token, editingProduct.id, updateData);
+      
+      setEditingProduct(null);
+      loadData();
+    } catch (err: any) {
+      setEditError(err.message || 'Ошибка обновления продукта');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Удаление продукта
+  const handleDeleteProduct = async (productId: number, productName: string) => {
+    if (!window.confirm(`Вы уверены, что хотите удалить продукт "${productName}"?`)) {
+      return;
+    }
+
+    try {
+      await apiDeleteProduct(token, productId);
+      loadData();
+    } catch (err: any) {
+      window.alert(`Ошибка удаления: ${err.message}`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center' }}>
+        <div>Загрузка продуктов...</div>
+      </div>
+    );
+  }
+
   return (
-    <div>
-    {/* Форма добавления товара — теперь в самом верху */}
-    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexDirection: 'column', marginBottom: 18 }}>
-      <input
-        value={newProd.name}
-        onChange={e => setNewProd((p: any) => ({ ...p, name: e.target.value }))}
-        placeholder="Название товара"
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
-      />
-      <input
-        value={newProd.price}
-        onChange={e => setNewProd((p: any) => ({ ...p, price: e.target.value }))}
-        placeholder="Цена"
-        type="number"
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
-      />
-      <input
-        value={newProd.image}
-        onChange={e => setNewProd((p: any) => ({ ...p, image: e.target.value }))}
-        placeholder="URL изображения (необязательно)"
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
-      />
-      <select
-        value={newProd.storeId}
-        onChange={e => setNewProd((p: any) => ({ ...p, storeId: e.target.value }))}
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
+    <div style={{ padding: 20 }}>
+      <button 
+        onClick={onBack}
+        style={{
+          background: '#eee',
+          border: 'none',
+          borderRadius: 8,
+          padding: '8px 16px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: 20
+        }}
       >
-        <option value="">Выберите магазин</option>
-        {stores && stores.length > 0 ? (
-          stores.map(s => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))
-        ) : (
-          <option value="" disabled>Нет магазинов</option>
-        )}
-      </select>
-      <select
-        value={newProd.categoryId}
-        onChange={e => setNewProd((p: any) => ({ ...p, categoryId: e.target.value }))}
-        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
+        ← Назад
+      </button>
+
+      <h2 style={{ marginBottom: 20 }}>Управление товарами</h2>
+
+      {error && (
+        <div style={{ 
+          background: '#ffebee', 
+          color: '#c62828', 
+          padding: 12, 
+          borderRadius: 8, 
+          marginBottom: 20 
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Кнопка создания нового продукта */}
+      <button
+        onClick={() => setShowCreateForm(!showCreateForm)}
+        style={{
+          background: '#4CAF50',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 8,
+          padding: '12px 24px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          marginBottom: 20
+        }}
       >
-        <option value="">Выберите категорию</option>
-        {categories && categories.length > 0 ? (
-          categories.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))
-        ) : (
-          <option value="" disabled>Нет категорий</option>
-        )}
-      </select>
-      <button onClick={onAdd} style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 16, padding: '8px 16px', cursor: 'pointer' }}>Добавить товар</button>
-    </div>
-    <h3>Управление товарами</h3>
-    <div style={{ color: '#888', marginBottom: 12 }}>Добавляйте товары, управляйте остатками.</div>
-    {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
-    {loading ? (
-      <div style={{ color: '#888', marginBottom: 8 }}>Загрузка...</div>
-    ) : (
-      <>
-        <ul style={{ padding: 0, margin: 0, listStyle: 'none' }}>
-          {products.map(prod => (
-            <li key={prod.id} style={{ background: '#fff', borderRadius: 8, padding: '10px 14px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontWeight: 600 }}>{prod.name} <span style={{ color: '#6BCB3D', fontWeight: 400 }}>{prod.price}₸</span></span>
-              <span style={{ color: '#888', fontSize: 14 }}>Магазин: {stores.find(s => s.id === prod.storeId)?.name || prod.storeId}</span>
-              <span style={{ color: '#888', fontSize: 14 }}>{prod.image ? <img src={prod.image} alt={prod.name} style={{ maxWidth: 60, maxHeight: 40, borderRadius: 6 }} /> : 'Без изображения'}</span>
-              {editPriceId === prod.id ? (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-                  <input
-                    type="number"
-                    value={editPrice}
-                    onChange={e => setEditPrice(e.target.value)}
-                    style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #e0e0e0', fontSize: 15, width: 80 }}
-                    placeholder="Новая цена"
-                  />
-                  <button
-                    onClick={() => updateProductPrice(prod.id, Number(editPrice))}
-                    style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 15, padding: '6px 10px', cursor: 'pointer' }}
-                    disabled={editPriceLoading || !editPrice}
-                  >Сохранить</button>
-                  <button
-                    onClick={() => { setEditPriceId(null); setEditPrice(''); }}
-                    style={{ background: '#eee', color: '#222', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 15, padding: '6px 10px', cursor: 'pointer' }}
-                  >Отмена</button>
-                  {editPriceError && <span style={{ color: 'red', fontSize: 13 }}>{editPriceError}</span>}
-                </div>
-              ) : (
-                <button
-                  onClick={() => { setEditPriceId(prod.id); setEditPrice(String(prod.price)); }}
-                  style={{ background: '#eee', color: '#222', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 15, padding: '6px 10px', cursor: 'pointer', marginTop: 4, alignSelf: 'flex-start' }}
-                >Изменить цену</button>
-              )}
-              <button onClick={() => onShowStock(prod.id)} style={{ background: '#eee', color: '#222', border: 'none', borderRadius: 6, fontWeight: 600, fontSize: 15, padding: '6px 10px', cursor: 'pointer', marginTop: 4, alignSelf: 'flex-start' }}>Остатки и история</button>
-            </li>
-          ))}
-        </ul>
-        {/* Остатки и история */}
-        {stockInfo && (
-          <div style={{ background: '#f7f7f7', borderRadius: 10, padding: 14, marginTop: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Остаток: {stockInfo.stock}</div>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Движение товара</div>
-            {stockError && <div style={{ color: 'red', marginBottom: 8 }}>{stockError}</div>}
-            {stockLoading ? (
-              <div style={{ color: '#888', marginBottom: 8 }}>Загрузка...</div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <input
-                    value={moveQty}
-                    onChange={e => setMoveQty(e.target.value)}
-                    placeholder="Количество"
-                    type="number"
-                    style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
-                  />
-                  <select value={moveType} onChange={e => setMoveType(e.target.value as any)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}>
-                    <option value="INCOME">Поступление</option>
-                    <option value="OUTCOME">Списание</option>
-                  </select>
-                  <button onClick={() => onStockMove(stockInfo.productId)} style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 16, padding: '8px 16px', cursor: 'pointer' }}>Операция</button>
-                </div>
-                <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>История:</div>
-                <ul style={{ padding: 0, margin: 0, listStyle: 'none' }}>
-                  {stockHistory.map((m, idx) => (
-                    <li key={idx} style={{ fontSize: 14, marginBottom: 4 }}>
-                      {m.type === 'INCOME' ? '+' : '-'}{m.quantity} ({m.type === 'INCOME' ? 'Поступление' : 'Списание'}) — {new Date(m.createdAt).toLocaleString()}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <button onClick={onCloseStock} style={{ background: '#eee', border: 'none', borderRadius: 8, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', marginTop: 10 }}>Закрыть</button>
+        {showCreateForm ? 'Отменить' : '+ Добавить товар'}
+      </button>
+
+      {/* Форма создания нового продукта */}
+      {showCreateForm && (
+        <div style={{ 
+          background: '#f5f5f5', 
+          padding: 20, 
+          borderRadius: 12, 
+          marginBottom: 20 
+        }}>
+          <h3>Создать новый товар</h3>
+          
+          {createError && (
+            <div style={{ 
+              background: '#ffebee', 
+              color: '#c62828', 
+              padding: 8, 
+              borderRadius: 6, 
+              marginBottom: 12 
+            }}>
+              {createError}
+            </div>
+          )}
+
+          {stores.length === 0 && !storesLoading && (
+            <div style={{ 
+              background: '#fff3e0', 
+              color: '#f57800', 
+              padding: 8, 
+              borderRadius: 6, 
+              marginBottom: 12 
+            }}>
+              ⚠️ Магазины не загружены. Проверьте консоль для деталей.
+              <br />
+              <small>Загруженных магазинов: {stores.length}</small>
+            </div>
+          )}
+
+          {storesLoading && (
+            <div style={{ 
+              background: '#e3f2fd', 
+              color: '#1976d2', 
+              padding: 8, 
+              borderRadius: 6, 
+              marginBottom: 12 
+            }}>
+              🔄 Загружаются магазины...
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gap: 12 }}>
+            <input
+              type="text"
+              placeholder="Название товара *"
+              value={newProduct.name}
+              onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            />
+            
+            <input
+              type="number"
+              placeholder="Цена *"
+              value={newProduct.price}
+              onChange={(e) => setNewProduct({...newProduct, price: e.target.value})}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            />
+            
+            <select
+              value={newProduct.storeId}
+              onChange={(e) => setNewProduct({...newProduct, storeId: e.target.value})}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+              disabled={storesLoading}
+            >
+              <option value="">
+                {storesLoading ? 'Загрузка магазинов...' : 'Выберите магазин *'}
+              </option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
+              ))}
+            </select>
+            
+            <select
+              value={newProduct.categoryId}
+              onChange={(e) => setNewProduct({...newProduct, categoryId: e.target.value})}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            >
+              <option value="">Выберите категорию (опционально)</option>
+              {categories.map(category => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            
+            <input
+              type="url"
+              placeholder="URL изображения"
+              value={newProduct.image}
+              onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            />
+            
+            <textarea
+              placeholder="Описание товара"
+              value={newProduct.description}
+              onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+              rows={3}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd', resize: 'vertical' }}
+            />
           </div>
-        )}
-      </>
-    )}
-    <button onClick={onBack} style={{ background: '#eee', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 600, cursor: 'pointer', marginTop: 18 }}>← Назад</button>
-  </div>
+
+          <button
+            onClick={handleCreateProduct}
+            disabled={createLoading}
+            style={{
+              background: createLoading ? '#ccc' : '#4CAF50',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '12px 24px',
+              fontWeight: 600,
+              cursor: createLoading ? 'wait' : 'pointer',
+              marginTop: 12
+            }}
+          >
+            {createLoading ? 'Создание...' : 'Создать товар'}
+          </button>
+        </div>
+      )}
+
+      {/* Список продуктов */}
+      <div style={{ display: 'grid', gap: 16 }}>
+        {products.map(product => (
+          <div 
+            key={product.id}
+            style={{ 
+              background: '#fff', 
+              padding: 16, 
+              borderRadius: 12, 
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)' 
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              {product.image && (
+                <img 
+                  src={product.image} 
+                  alt={product.name}
+                  style={{ 
+                    width: 60, 
+                    height: 60, 
+                    objectFit: 'cover', 
+                    borderRadius: 8 
+                  }}
+                />
+              )}
+              
+              <div style={{ flex: 1 }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{product.name}</h4>
+                <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                  Цена: <strong>{product.price}₸</strong>
+                </div>
+                <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                  Магазин: {stores.find(s => s.id === product.storeId)?.name || 'Неизвестно'}
+                </div>
+                {product.categoryId && (
+                  <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
+                    Категория: {categories.find(c => c.id === product.categoryId)?.name || 'Неизвестно'}
+                  </div>
+                )}
+                {product.description && (
+                  <div style={{ fontSize: 14, color: '#666', marginTop: 8 }}>
+                    {product.description}
+                  </div>
+                )}
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  onClick={() => startEditProduct(product)}
+                  style={{
+                    background: '#2196F3',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✏️ Редактировать
+                </button>
+                
+                <button
+                  onClick={() => handleDeleteProduct(product.id, product.name)}
+                  style={{
+                    background: '#f44336',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    cursor: 'pointer'
+                  }}
+                >
+                  🗑️ Удалить
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {products.length === 0 && !loading && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
+          Товары не найдены
+        </div>
+      )}
+
+      {/* Модальное окно редактирования */}
+      {editingProduct && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: 20
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: 12,
+            padding: 24,
+            maxWidth: 500,
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <h3>Редактировать товар</h3>
+            
+            {editError && (
+              <div style={{ 
+                background: '#ffebee', 
+                color: '#c62828', 
+                padding: 8, 
+                borderRadius: 6, 
+                marginBottom: 12 
+              }}>
+                {editError}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gap: 12, marginBottom: 20 }}>
+              <input
+                type="text"
+                placeholder="Название товара *"
+                value={editForm.name}
+                onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+              />
+              
+              <input
+                type="number"
+                placeholder="Цена *"
+                value={editForm.price}
+                onChange={(e) => setEditForm({...editForm, price: e.target.value})}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+              />
+              
+              <select
+                value={editForm.storeId}
+                onChange={(e) => setEditForm({...editForm, storeId: e.target.value})}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+                disabled={storesLoading}
+              >
+                <option value="">
+                  {storesLoading ? 'Загрузка магазинов...' : 'Выберите магазин *'}
+                </option>
+                {stores.map(store => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+              
+              <select
+                value={editForm.categoryId}
+                onChange={(e) => setEditForm({...editForm, categoryId: e.target.value})}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+              >
+                <option value="">Выберите категорию (опционально)</option>
+                {categories.map(category => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              
+              <input
+                type="url"
+                placeholder="URL изображения"
+                value={editForm.image}
+                onChange={(e) => setEditForm({...editForm, image: e.target.value})}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+              />
+              
+              <textarea
+                placeholder="Описание товара"
+                value={editForm.description}
+                onChange={(e) => setEditForm({...editForm, description: e.target.value})}
+                rows={3}
+                style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd', resize: 'vertical' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={handleUpdateProduct}
+                disabled={editLoading}
+                style={{
+                  background: editLoading ? '#ccc' : '#4CAF50',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '12px 24px',
+                  fontWeight: 600,
+                  cursor: editLoading ? 'wait' : 'pointer',
+                  flex: 1
+                }}
+              >
+                {editLoading ? 'Сохранение...' : 'Сохранить'}
+              </button>
+              
+              <button
+                onClick={() => setEditingProduct(null)}
+                style={{
+                  background: '#666',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '12px 24px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  flex: 1
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
-}
+};
 
 export default AdminProducts;

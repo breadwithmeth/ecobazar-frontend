@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiGetAddresses } from '../api';
+import { apiGetAddresses, apiAddAddress } from '../api';
 import BottomBar from '../components/BottomBar';
 import { apiCreateOrder } from '../api';
 
@@ -16,7 +16,7 @@ type CartItem = {
   qty: number;
 };
 
-type Page = 'catalog' | 'profile' | 'cart';
+type Page = 'catalog' | 'profile' | 'cart' | 'admin';
 type Address = {
   id: number;
   address: string;
@@ -37,6 +37,12 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  
+  // Состояния для создания нового адреса
+  const [showNewAddressForm, setShowNewAddressForm] = useState(false);
+  const [newAddress, setNewAddress] = useState('');
+  const [addingAddress, setAddingAddress] = useState(false);
+  const [addressError, setAddressError] = useState('');
 
   useEffect(() => {
     if (!token) return;
@@ -44,9 +50,34 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
       .then(data => {
         setAddresses(data);
         setAddressId(data[0]?.id || null);
+        // Если нет адресов, автоматически показываем форму создания
+        if (data.length === 0) {
+          setShowNewAddressForm(true);
+        }
       })
       .catch(() => setAddresses([]));
   }, [token]);
+
+  const handleAddAddress = async () => {
+    if (!newAddress.trim()) {
+      setAddressError('Введите адрес');
+      return;
+    }
+
+    setAddingAddress(true);
+    setAddressError('');
+    try {
+      const addedAddress = await apiAddAddress(token!, newAddress.trim());
+      setAddresses(prev => [...prev, addedAddress]);
+      setAddressId(addedAddress.id);
+      setNewAddress('');
+      setShowNewAddressForm(false);
+    } catch (err: any) {
+      setAddressError(err.message || 'Ошибка добавления адреса');
+    } finally {
+      setAddingAddress(false);
+    }
+  };
 
   return (
     <React.Fragment>
@@ -132,18 +163,138 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                 </div>
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Адрес доставки</div>
-                  {addresses.length === 0 ? (
-                    <div style={{ color: '#888', fontSize: 15 }}>Нет добавленных адресов</div>
-                  ) : (
-                    <select
-                      value={addressId ?? ''}
-                      onChange={e => setAddressId(Number(e.target.value))}
-                      style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e0e0e0', fontSize: 15, marginBottom: 8 }}
-                    >
-                      {addresses.map(addr => (
-                        <option key={addr.id} value={addr.id}>{addr.address}</option>
-                      ))}
-                    </select>
+                  {addresses.length === 0 && !showNewAddressForm ? (
+                    <div style={{ 
+                      background: '#fff3e0', 
+                      border: '1px solid #ffa726', 
+                      borderRadius: 8, 
+                      padding: 12, 
+                      marginBottom: 8 
+                    }}>
+                      <div style={{ color: '#ef6c00', fontSize: 14, marginBottom: 8 }}>
+                        📍 У вас нет сохраненных адресов
+                      </div>
+                      <button
+                        onClick={() => setShowNewAddressForm(true)}
+                        style={{
+                          background: '#ffa726',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '8px 16px',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + Добавить адрес
+                      </button>
+                    </div>
+                  ) : addresses.length > 0 ? (
+                    <>
+                      <select
+                        value={addressId ?? ''}
+                        onChange={e => setAddressId(Number(e.target.value))}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #e0e0e0', fontSize: 15, marginBottom: 8 }}
+                      >
+                        {addresses.map(addr => (
+                          <option key={addr.id} value={addr.id}>{addr.address}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setShowNewAddressForm(true)}
+                        style={{
+                          background: '#f5f5f5',
+                          color: '#666',
+                          border: '1px solid #ddd',
+                          borderRadius: 6,
+                          padding: '6px 12px',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          marginBottom: 8
+                        }}
+                      >
+                        + Добавить новый адрес
+                      </button>
+                    </>
+                  ) : null}
+                  
+                  {/* Форма добавления нового адреса */}
+                  {showNewAddressForm && (
+                    <div style={{ 
+                      background: '#f8f9fa', 
+                      border: '1px solid #e9ecef', 
+                      borderRadius: 8, 
+                      padding: 12, 
+                      marginBottom: 8 
+                    }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+                        Новый адрес доставки
+                      </div>
+                      
+                      {addressError && (
+                        <div style={{ color: 'red', fontSize: 13, marginBottom: 8 }}>
+                          {addressError}
+                        </div>
+                      )}
+                      
+                      <input
+                        type="text"
+                        placeholder="Введите полный адрес доставки"
+                        value={newAddress}
+                        onChange={e => setNewAddress(e.target.value)}
+                        style={{ 
+                          width: '100%', 
+                          padding: '8px 12px', 
+                          borderRadius: 6, 
+                          border: '1px solid #ddd', 
+                          fontSize: 14, 
+                          marginBottom: 8,
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                      
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={handleAddAddress}
+                          disabled={addingAddress || !newAddress.trim()}
+                          style={{
+                            background: addingAddress ? '#ccc' : '#6BCB3D',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 6,
+                            padding: '8px 16px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: addingAddress ? 'wait' : 'pointer',
+                            flex: 1,
+                            opacity: !newAddress.trim() ? 0.6 : 1
+                          }}
+                        >
+                          {addingAddress ? 'Добавление...' : 'Сохранить адрес'}
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            setShowNewAddressForm(false);
+                            setNewAddress('');
+                            setAddressError('');
+                          }}
+                          style={{
+                            background: '#6c757d',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 6,
+                            padding: '8px 16px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 <div style={{ marginBottom: 10, width: '100%', maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
@@ -174,7 +325,7 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                       opacity: loading ? 0.7 : 1,
                       boxShadow: '0 2px 8px rgba(107,203,61,0.10)',
                     }}
-                    disabled={loading || !addressId || cart.length === 0 || addresses.length === 0}
+                    disabled={loading || !addressId || cart.length === 0}
                     onClick={async () => {
                       setError('');
                       setSuccess(false);

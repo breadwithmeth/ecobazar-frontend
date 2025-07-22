@@ -1,35 +1,134 @@
-# Getting Started with Create React App
+# EcoBazar Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Telegram Mini App для сервиса доставки с полной админ-панелью.
 
-## Available Scripts
+## Возможности
 
-In the project directory, you can run:
+- 🛒 Каталог товаров с поиском и категориями
+- 🛍️ Корзина покупок с учетом остатков
+- 📱 Профиль пользователя и адреса доставки
+- 📦 Отслеживание заказов в реальном времени
+- 👨‍💼 Админ-панель для управления товарами, заказами, категориями
+- 🔐 Авторизация через Telegram WebApp API
 
-### `npm start`
+## Установка и запуск
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Предварительные требования
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+- Node.js >= 16
+- npm или yarn
+- Backend API сервер
 
-### `npm test`
+### Настройка переменных окружения
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+1. Скопируйте `.env.example` в `.env`:
+```bash
+cp .env.example .env
+```
 
-### `npm run build`
+2. Отредактируйте `.env` и укажите адрес вашего API:
+```env
+REACT_APP_API_URL=https://your-api-domain.com/api
+REACT_APP_TEST_VALUE=2
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Установка зависимостей
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```bash
+npm install
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Запуск в режиме разработки
 
-### `npm run eject`
+```bash
+npm start
+# или
+npm run dev
+```
+
+Откроется [http://localhost:3000](http://localhost:3000) для просмотра в браузере.
+
+### Сборка для продакшена
+
+```bash
+npm run build
+```
+
+Сборка будет создана в папке `build/`.
+
+### Линтинг кода
+
+```bash
+npm run lint
+```
+
+## Развертывание
+
+### DigitalOcean App Platform
+
+1. Подключите репозиторий к App Platform
+2. Установите переменные окружения в настройках:
+   - `REACT_APP_API_URL=https://your-api-domain.com/api`
+3. App Platform автоматически соберет и развернет приложение
+
+### Другие платформы
+
+Приложение совместимо с любой платформой, поддерживающей статические сайты:
+- Vercel
+- Netlify
+- AWS S3 + CloudFront
+- GitHub Pages
+
+## Telegram WebApp настройка
+
+1. Создайте бота через [@BotFather](https://t.me/BotFather)
+2. Установите WebApp URL через команду `/setmenubutton`
+3. Укажите URL вашего развернутого приложения
+4. Настройте webhook для бота (опционально)
+
+## Архитектура
+
+```
+src/
+├── admin/           # Компоненты админ-панели
+├── components/      # Переиспользуемые компоненты
+├── pages/          # Основные страницы приложения
+├── api.ts          # Все API вызовы
+├── TelegramMiniApp.tsx  # Основной компонент приложения
+└── App.tsx         # Точка входа
+```
+
+## API Endpoints
+
+Приложение ожидает следующие эндпоинты от backend:
+
+- `POST /auth` - Авторизация по telegram_user_id
+- `GET /user/me` - Получение профиля пользователя
+- `GET /categories` - Получение категорий
+- `GET /products` - Получение товаров
+- `GET /orders/all` - Получение заказов пользователя
+- `POST /orders` - Создание заказа
+- И другие для админ-функций
+
+## Troubleshooting
+
+### Проблема: "API_URL не определён"
+
+Убедитесь, что:
+1. Файл `.env` создан и содержит `REACT_APP_API_URL`
+2. Переменная окружения начинается с `REACT_APP_`
+3. После изменения `.env` перезапустите dev-сервер
+
+### Проблема: "Cannot read properties of undefined (reading 'user')"
+
+Убедитесь, что:
+1. В `public/index.html` подключен скрипт Telegram WebApp
+2. Приложение запущено внутри Telegram (не в обычном браузере)
+3. Бот настроен корректно в BotFather
+
+## Лицензия
+
+MIT
 
 **Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
