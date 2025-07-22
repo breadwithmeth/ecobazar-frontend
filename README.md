@@ -156,6 +156,18 @@ src/
 
 ## Troubleshooting
 
+### Проблема: "We encountered an error when trying to load your application"
+
+Это означает проблему с деплоем на DigitalOcean. Проверьте:
+
+1. **Build логи**: В DigitalOcean Console → Apps → Your App → Activity → Build logs
+2. **Runtime логи**: Apps → Your App → Runtime → View logs
+
+**Частые решения**:
+- Убедитесь что в `package.json` есть скрипт `"start": "node server.js"`
+- Убедитесь что в зависимостях есть `express`
+- Проверьте что port настроен через переменную `PORT`
+
 ### Проблема: "API_URL не определён"
 
 Убедитесь, что:
@@ -169,6 +181,13 @@ src/
 1. В `public/index.html` подключен скрипт Telegram WebApp
 2. Приложение запущено внутри Telegram (не в обычном браузере)
 3. Бот настроен корректно в BotFather
+
+### Проблема: Бесконечная загрузка в Telegram
+
+Приложение имеет fallback механизм для демонстрации:
+- Автоматически использует тестовый userId если Telegram данные недоступны
+- Время ожидания инициализации сокращено до 500ms
+- В продакшене показывает тестовый интерфейс для демонстрации
 
 ## Лицензия
 

@@ -82,27 +82,19 @@ const TelegramMiniApp: React.FC = () => {
     // Проверяем данные Telegram немедленно
     const foundUser = checkTelegramData();
     
-    // Устанавливаем таймер для финальной проверки
-    const timeout = setTimeout(() => {
-      console.log('Final check after timeout...');
-      
-      if (!foundUser && !checkTelegramData()) {
-        console.log('Still no Telegram data after timeout');
-        
-        // В режиме разработки с тестовым значением используем fallback
-        if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_TEST_VALUE) {
-          console.log('Development mode: using test userId');
-          setUserId(1232676917);
-        } else if (process.env.NODE_ENV === 'production') {
-          // В продакшене пытаемся использовать fallback для тестирования
-          console.log('Production mode: using fallback userId for testing');
-          setUserId(1232676917);
-        }
-      }
-      
-      // Отмечаем что инициализация завершена
+    // Если пользователь не найден сразу, используем fallback
+    if (!foundUser) {
+      console.log('No Telegram user found, using fallback');
+      setUserId(1232676917);
       setIsInitialized(true);
-    }, 2000); // Уменьшили время ожидания до 2 секунд
+      return;
+    }
+    
+    // Устанавливаем короткий таймер для завершения инициализации
+    const timeout = setTimeout(() => {
+      console.log('Initialization completed');
+      setIsInitialized(true);
+    }, 500); // Очень короткое время
 
     return () => clearTimeout(timeout);
   }, []);
