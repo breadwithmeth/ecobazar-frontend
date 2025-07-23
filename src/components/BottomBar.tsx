@@ -2,8 +2,8 @@ import React from 'react';
 import StoreIcon from '@mui/icons-material/Store';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PersonIcon from '@mui/icons-material/Person';
+import { Page } from '../types/navigation';
 
-type Page = 'catalog' | 'profile' | 'cart' | 'admin';
 interface BottomBarProps {
   page: Page;
   onNavigate: (page: Page) => void;

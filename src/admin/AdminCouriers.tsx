@@ -5,7 +5,7 @@ interface Courier {
   id: number;
   telegram_user_id: string;
   name: string;
-  phone: string;
+  phone_number: string;
   createdAt: string;
   stats: {
     totalDelivered: number;
@@ -190,7 +190,7 @@ const AdminCouriers: React.FC<AdminCouriersProps> = ({ token }) => {
                   {courier.name}
                 </h4>
                 <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                  Телефон: {courier.phone}
+                  Телефон: {courier.phone_number}
                 </div>
                 <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
                   Telegram ID: {courier.telegram_user_id}

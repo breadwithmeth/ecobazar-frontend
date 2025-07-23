@@ -101,7 +101,7 @@ export async function apiUpdateUser(token: string, data: { name: string; phone_n
 }
 
 // Обновить статус заказа (только ADMIN)
-export async function apiUpdateOrderStatus(token: string, orderId: number, status: string) {
+export async function apiUpdateOrderStatus(token: string, orderId: number, status: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED') {
   const resp = await fetch(`${API_URL}/orders/${orderId}/status`, {
     method: 'PUT',
     headers: {
@@ -129,7 +129,7 @@ export async function apiGetMyOrders(
   token: string,
   page = 1,
   limit = 10,
-  status?: string
+  status?: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED'
 ) {
   const params = new URLSearchParams({
     page: page.toString(),
@@ -152,7 +152,7 @@ export async function apiGetUserOrders(
   page = 1,
   limit = 20,
   filters?: {
-    status?: string;
+    status?: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED';
     startDate?: string;
     endDate?: string;
   }
@@ -209,16 +209,31 @@ export async function apiGetStores(token: string, page = 1, limit = 50, search?:
     const responseData = await r.json();
     console.log('📦 Raw stores response:', responseData);
     
-    // API возвращает массив магазинов напрямую
-    if (Array.isArray(responseData)) {
-      console.log('✅ Direct array format - stores data:', responseData);
-      return { stores: responseData, pagination: { total: responseData.length, page, limit, hasNext: false, hasPrev: false } };
+    // Новый формат API: { success: true, data: [...], meta: {...} }
+    if (responseData && responseData.success && responseData.data) {
+      console.log('✅ New API format - stores data:', responseData.data);
+      console.log('✅ Meta data:', responseData.meta);
+      return {
+        success: true,
+        data: responseData.data,
+        meta: responseData.meta
+      };
     }
     
-    // Если это объект с data (API v2.0 формат)
+    // API возвращает массив магазинов напрямую (старый формат)
+    if (Array.isArray(responseData)) {
+      console.log('✅ Direct array format - stores data:', responseData);
+      return { 
+        success: true,
+        data: responseData, 
+        meta: { total: responseData.length, page, limit, totalPages: 1, hasNext: false, hasPrev: false } 
+      };
+    }
+    
+    // Если это объект с data (промежуточный формат)
     if (responseData && responseData.data) {
-      console.log('✅ API v2.0 format - stores data:', responseData.data);
-      return responseData.data;
+      console.log('✅ Object with data format - stores data:', responseData.data);
+      return responseData;
     }
     
     console.error('❌ Unexpected response format:', responseData);
@@ -448,7 +463,7 @@ export async function apiCreateUser(
   userData: {
     telegramUserId: string;
     name: string;
-    role: 'CUSTOMER' | 'ADMIN' | 'COURIER';
+    role: 'CUSTOMER' | 'ADMIN' | 'COURIER' | 'SELLER';
   }
 ) {
   const response = await fetch(`${API_URL}/users`, {
@@ -504,7 +519,7 @@ export async function apiGetAdminOrders(
   params?: {
     page?: number;
     limit?: number;
-    status?: string;
+    status?: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED';
     userId?: number;
     dateFrom?: string;
     dateTo?: string;
@@ -550,7 +565,7 @@ export async function apiGetAdminOrders(
 export async function apiUpdateOrderStatusAdmin(
   token: string,
   orderId: number,
-  status: string
+  status: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED'
 ) {
   const response = await fetch(`${API_URL}/orders/${orderId}/status`, {
     method: 'PUT',
@@ -708,7 +723,7 @@ export async function apiGetSalesReport(
 export async function apiChangeUserRole(
   token: string,
   userId: number,
-  role: 'CUSTOMER' | 'COURIER' | 'ADMIN'
+  role: 'CUSTOMER' | 'COURIER' | 'ADMIN' | 'SELLER'
 ) {
   const response = await fetch(`${API_URL}/admin/users/${userId}/role`, {
     method: 'POST',
@@ -752,6 +767,8 @@ export async function apiGetCouriersList(
     sortOrder?: 'asc' | 'desc';
   }
 ) {
+  console.log('🚚 apiGetCouriersList called with:', { token: token ? 'present' : 'missing', params });
+  
   const searchParams = new URLSearchParams();
   if (params?.page) searchParams.append('page', params.page.toString());
   if (params?.limit) searchParams.append('limit', params.limit.toString());
@@ -759,15 +776,44 @@ export async function apiGetCouriersList(
   if (params?.sortBy) searchParams.append('sortBy', params.sortBy);
   if (params?.sortOrder) searchParams.append('sortOrder', params.sortOrder);
 
-  const response = await fetch(`${API_URL}/courier/list?${searchParams}`, {
+  const url = `${API_URL}/courier/list?${searchParams}`;
+  console.log('🚚 Making request to:', url);
+
+  const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  console.log('Get couriers list response status:', response.status);
-  const result = await handleApiResponse<{ couriers: any[]; pagination: any }>(response);
-  console.log('Couriers list result:', result);
+  console.log('🚚 Get couriers list response status:', response.status);
+  console.log('🚚 Response headers:', Object.fromEntries(response.headers.entries()));
   
-  // API возвращает данные в формате { couriers: [...], pagination: {...} }
-  return result;
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('🚚 Error response text:', errorText);
+    throw new Error(`Couriers API error: ${response.status} ${response.statusText}`);
+  }
+  
+  const result = await handleApiResponse<any>(response);
+  console.log('🚚 Couriers list result:', result);
+  console.log('🚚 Result type:', typeof result);
+  console.log('🚚 Result keys:', result ? Object.keys(result) : 'null');
+  
+  // Проверяем разные возможные форматы ответа API
+  if (result && result.couriers) {
+    console.log('🚚 Found couriers in result.couriers:', result.couriers.length);
+    return { couriers: result.couriers, pagination: result.pagination || {} };
+  } else if (Array.isArray(result)) {
+    console.log('🚚 Result is array, converting to {couriers: [...]} format');
+    return { couriers: result, pagination: {} };
+  } else if (result && result.data) {
+    console.log('🚚 Found data in result.data:', result.data);
+    if (result.data.couriers) {
+      return { couriers: result.data.couriers, pagination: result.data.pagination || {} };
+    } else if (Array.isArray(result.data)) {
+      return { couriers: result.data, pagination: {} };
+    }
+  }
+  
+  console.warn('🚚 Unexpected couriers API response format:', result);
+  return { couriers: [], pagination: {} };
 }
 
 // Получить список всех пользователей (ADMIN)
@@ -802,5 +848,68 @@ export async function apiGetSecurityStats(token: string) {
   const response = await fetch(`${API_URL}/security-stats`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return handleApiResponse(response);
+}
+
+// ================================
+// КУРЬЕРСКИЕ API
+// ================================
+
+// Получить заказы курьера
+export async function apiGetCourierOrders(
+  token: string,
+  page = 1,
+  limit = 10,
+  status?: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED'
+) {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+  
+  if (status) params.append('status', status);
+
+  const response = await fetch(`${API_URL}/courier/orders?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleApiResponse<{ orders: any[]; meta: any }>(response);
+}
+
+// Обновить статус заказа курьером
+export async function apiUpdateOrderStatusByCourier(
+  token: string,
+  orderId: number,
+  status: 'DELIVERING' | 'DELIVERED' | 'CANCELLED'
+) {
+  const response = await fetch(`${API_URL}/courier/orders/${orderId}/status`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  });
+  return handleApiResponse(response);
+}
+
+// Assign store owner API function
+export async function apiAssignStoreOwner(
+  token: string,
+  storeId: number,
+  ownerId: number
+) {
+  console.log('🔐 Assigning store owner with token:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+  console.log('🏪 Store ID:', storeId, 'Owner ID:', ownerId);
+  
+  const response = await fetch(`${API_URL}/stores/${storeId}/assign-owner`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ ownerId }),
+  });
+  
+  console.log('📡 Assign owner response status:', response.status);
   return handleApiResponse(response);
 }

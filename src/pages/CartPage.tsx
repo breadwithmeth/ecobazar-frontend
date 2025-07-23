@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiGetAddresses, apiAddAddress } from '../api';
 import BottomBar from '../components/BottomBar';
 import { apiCreateOrder } from '../api';
+import { Page } from '../types/navigation';
 
 type Product = {
   id: number;
@@ -16,7 +17,6 @@ type CartItem = {
   qty: number;
 };
 
-type Page = 'catalog' | 'profile' | 'cart' | 'admin';
 type Address = {
   id: number;
   address: string;
@@ -43,6 +43,14 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
   const [newAddress, setNewAddress] = useState('');
   const [addingAddress, setAddingAddress] = useState(false);
   const [addressError, setAddressError] = useState('');
+
+  // Состояния для типа доставки
+  const [deliveryType, setDeliveryType] = useState<'ASAP' | 'SCHEDULED'>('ASAP');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  
+  // Состояние для показа красивого уведомления
+  const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -297,6 +305,121 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                     </div>
                   )}
                 </div>
+
+                {/* Выбор типа доставки */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Время доставки</div>
+                  
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <button
+                      onClick={() => setDeliveryType('ASAP')}
+                      style={{
+                        flex: 1,
+                        padding: '12px 16px',
+                        border: `2px solid ${deliveryType === 'ASAP' ? '#6BCB3D' : '#e0e0e0'}`,
+                        background: deliveryType === 'ASAP' ? '#f0f8e0' : '#fff',
+                        color: deliveryType === 'ASAP' ? '#6BCB3D' : '#666',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      🚀 Как можно скорее
+                    </button>
+                    
+                    <button
+                      onClick={() => setDeliveryType('SCHEDULED')}
+                      style={{
+                        flex: 1,
+                        padding: '12px 16px',
+                        border: `2px solid ${deliveryType === 'SCHEDULED' ? '#6BCB3D' : '#e0e0e0'}`,
+                        background: deliveryType === 'SCHEDULED' ? '#f0f8e0' : '#fff',
+                        color: deliveryType === 'SCHEDULED' ? '#6BCB3D' : '#666',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      📅 Запланировать
+                    </button>
+                  </div>
+
+                  {/* Форма для запланированной доставки */}
+                  {deliveryType === 'SCHEDULED' && (
+                    <div style={{ 
+                      background: '#f8f9fa', 
+                      border: '1px solid #e9ecef', 
+                      borderRadius: 8, 
+                      padding: 12, 
+                      marginBottom: 8 
+                    }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, color: '#6BCB3D' }}>
+                        📅 Выберите дату и время доставки
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="date"
+                            value={scheduledDate}
+                            onChange={e => setScheduledDate(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                            style={{ 
+                              width: '100%', 
+                              padding: '8px 12px', 
+                              borderRadius: 6, 
+                              border: '1px solid #ddd', 
+                              fontSize: 14,
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+                        
+                        <div style={{ flex: 1 }}>
+                          <input
+                            type="time"
+                            value={scheduledTime}
+                            onChange={e => setScheduledTime(e.target.value)}
+                            style={{ 
+                              width: '100%', 
+                              padding: '8px 12px', 
+                              borderRadius: 6, 
+                              border: '1px solid #ddd', 
+                              fontSize: 14,
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div style={{ fontSize: 12, color: '#6c757d' }}>
+                        💡 Доставка возможна с 9:00 до 21:00
+                      </div>
+                    </div>
+                  )}
+
+                  {deliveryType === 'ASAP' && (
+                    <div style={{ 
+                      background: '#e8f5e8', 
+                      border: '1px solid #6BCB3D', 
+                      borderRadius: 8, 
+                      padding: 10, 
+                      marginBottom: 8 
+                    }}>
+                      <div style={{ fontSize: 13, color: '#4a7c59', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>⚡</span>
+                        <span>Доставим в течение 1 часа</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ marginBottom: 10, width: '100%', maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
                   <input
                     type="text"
@@ -307,8 +430,36 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                   />
                 </div>
                 {error && <div style={{ color: 'red', fontSize: 15, marginBottom: 8 }}>{error}</div>}
+                
+                {/* Проверка валидности для запланированной доставки */}
+                {deliveryType === 'SCHEDULED' && (!scheduledDate || !scheduledTime) && (
+                  <div style={{ 
+                    color: '#ff9800', 
+                    fontSize: 13, 
+                    marginBottom: 8, 
+                    background: '#fff3e0', 
+                    padding: 8, 
+                    borderRadius: 6,
+                    border: '1px solid #ffcc02'
+                  }}>
+                    ⚠️ Для запланированной доставки выберите дату и время
+                  </div>
+                )}
+                
                 {success ? (
-                  <div style={{ color: '#6BCB3D', fontWeight: 700, fontSize: 16, margin: '14px 0', textAlign: 'center' }}>Заказ успешно оформлен!</div>
+                  <div style={{ color: '#6BCB3D', fontWeight: 700, fontSize: 16, margin: '14px 0', textAlign: 'center' }}>
+                    🎉 Заказ успешно оформлен!
+                    {deliveryType === 'ASAP' && (
+                      <div style={{ fontSize: 14, fontWeight: 400, marginTop: 4 }}>
+                        Доставим в течение 1 часа ⚡
+                      </div>
+                    )}
+                    {deliveryType === 'SCHEDULED' && scheduledDate && scheduledTime && (
+                      <div style={{ fontSize: 14, fontWeight: 400, marginTop: 4 }}>
+                        Доставим {new Date(`${scheduledDate}T${scheduledTime}`).toLocaleString('ru-RU')} 📅
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <button
                     style={{
@@ -325,19 +476,38 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                       opacity: loading ? 0.7 : 1,
                       boxShadow: '0 2px 8px rgba(107,203,61,0.10)',
                     }}
-                    disabled={loading || !addressId || cart.length === 0}
+                    disabled={loading || !addressId || cart.length === 0 || (deliveryType === 'SCHEDULED' && (!scheduledDate || !scheduledTime))}
                     onClick={async () => {
                       setError('');
                       setSuccess(false);
                       setLoading(true);
                       try {
-                        await apiCreateOrder(token!, {
+                        const orderData: any = {
                           items: cart.map(i => ({ productId: i.id, quantity: i.qty })),
                           address: addresses.find(a => a.id === addressId)?.address || '',
+                          deliveryType,
                           ...(comment.trim() ? { comment: comment.trim() } : {})
-                        });
+                        };
+
+                        // Добавляем запланированную дату, если выбран соответствующий тип
+                        if (deliveryType === 'SCHEDULED' && scheduledDate && scheduledTime) {
+                          const scheduledDateTime = new Date(`${scheduledDate}T${scheduledTime}:00`);
+                          orderData.scheduledDate = scheduledDateTime.toISOString();
+                        }
+
+                        await apiCreateOrder(token!, orderData);
                         setSuccess(true);
+                        setShowSuccessNotification(true);
                         onCartChange([]);
+                        // Сбрасываем форму
+                        setScheduledDate('');
+                        setScheduledTime('');
+                        setDeliveryType('ASAP');
+                        
+                        // Скрываем уведомление через 4 секунды
+                        setTimeout(() => {
+                          setShowSuccessNotification(false);
+                        }, 4000);
                       } catch (e: any) {
                         setError(e.message || 'Ошибка оформления заказа');
                       } finally {
@@ -345,7 +515,12 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                       }
                     }}
                   >
-                    Оформить заказ
+                    {loading 
+                      ? 'Оформление...' 
+                      : deliveryType === 'ASAP' 
+                        ? '🚀 Оформить заказ (доставка в течении 1 часа)'
+                        : '📅 Оформить запланированный заказ'
+                    }
                   </button>
                 )}
               </>
@@ -353,6 +528,75 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
           </div>
         </div>
       </div>
+      
+      {/* Красивое уведомление об успешном заказе */}
+      {showSuccessNotification && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 50%, #66BB6A 100%)',
+          color: '#fff',
+          padding: '32px 40px',
+          borderRadius: 24,
+          boxShadow: '0 25px 80px rgba(76, 175, 80, 0.4)',
+          zIndex: 2000,
+          textAlign: 'center',
+          minWidth: 320,
+          maxWidth: 400,
+          animation: 'successAppear 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
+            Ура! Заказ оформлен!
+          </div>
+          <div style={{ fontSize: 16, opacity: 0.95, lineHeight: 1.4, marginBottom: 16 }}>
+            {deliveryType === 'ASAP' 
+              ? 'Мы уже готовим ваши вкусности!\nДоставим всё самое свежее в течение часа! 🚀'
+              : `Отлично! Мы доставим ваш заказ\n${scheduledDate && scheduledTime ? new Date(`${scheduledDate}T${scheduledTime}`).toLocaleString('ru-RU', { 
+                  day: 'numeric', 
+                  month: 'long', 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                }) : 'в назначенное время'} 📅`
+            }
+          </div>
+          <div style={{ 
+            background: 'rgba(255, 255, 255, 0.2)', 
+            borderRadius: 12, 
+            padding: '12px 16px',
+            fontSize: 14,
+            fontWeight: 600,
+            border: '1px solid rgba(255, 255, 255, 0.3)'
+          }}>
+            💝 Спасибо за доверие! Вы делаете правильный выбор!
+          </div>
+          <div style={{ fontSize: 28, marginTop: 16 }}>🌟</div>
+        </div>
+      )}
+      
+      {/* CSS анимация для уведомления */}
+      {showSuccessNotification && (
+        <style>
+          {`
+            @keyframes successAppear {
+              0% {
+                transform: translate(-50%, -50%) scale(0.3) rotate(-15deg);
+                opacity: 0;
+              }
+              50% {
+                transform: translate(-50%, -50%) scale(1.1) rotate(5deg);
+              }
+              100% {
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+                opacity: 1;
+              }
+            }
+          `}
+        </style>
+      )}
+      
       <BottomBar
         page="cart"
         onNavigate={onBack}

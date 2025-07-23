@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import BottomBar from '../components/BottomBar';
 import { apiGetAddresses, apiAddAddress, apiGetUser } from '../api';
 import AdminPage from './AdminPage';
+import { Page } from '../types/navigation';
 
 interface User {
   id: number;
@@ -16,10 +17,20 @@ interface Address {
   address: string;
 }
 
-type Page = 'catalog' | 'profile' | 'cart' | 'admin';
 interface ProfilePageProps {
   token: string;
   onNavigate: (page: Page) => void;
+}
+
+// Функция для отображения роли на русском языке
+function getRoleDisplayName(role: string): string {
+  switch (role) {
+    case 'ADMIN': return 'Администратор';
+    case 'COURIER': return 'Курьер';
+    case 'CUSTOMER': return 'Клиент';
+    case 'SELLER': return 'Продавец';
+    default: return role;
+  }
 }
 
 
@@ -100,7 +111,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
               <div style={{ fontSize: 15, color: '#888', marginBottom: 8 }}>ID: {user.id}</div>
               {user.phone_number && <div style={{ fontSize: 15, color: '#888', marginBottom: 8 }}>Телефон: {user.phone_number}</div>}
               {user.telegram_user_id && <div style={{ fontSize: 15, color: '#888', marginBottom: 8 }}>Telegram ID: {user.telegram_user_id}</div>}
-              {user.role && <div style={{ fontSize: 15, color: '#888' }}>Роль: {user.role}</div>}
+              {user.role && <div style={{ fontSize: 15, color: '#888' }}>Роль: {getRoleDisplayName(user.role)}</div>}
               {/* Кнопка для ADMIN */}
               {user.role === 'ADMIN' && (
                 <button

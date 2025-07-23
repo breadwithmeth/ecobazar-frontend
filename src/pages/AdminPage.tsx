@@ -6,6 +6,7 @@ import AdminCouriers from '../admin/AdminCouriers';
 import AdminAnalytics from '../admin/AdminAnalytics';
 import AdminCategories from '../admin/AdminCategories';
 import AdminStock from '../admin/AdminStock';
+import AdminStores from '../admin/AdminStores';
 
 import { 
   apiGetProducts, 
@@ -25,18 +26,14 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
   console.log('AdminPage rendered with token:', token ? `${token.substring(0, 10)}...` : 'undefined');
   
   // Обновление статуса заказа
-  const onStatusChange = async (orderId: number, status: string) => {
+  const onStatusChange = async (orderId: number, status: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED') => {
     if (!token) return;
     try {
       await apiUpdateOrderStatusAdmin(token, orderId, status);
       // После успешного изменения статуса — обновить список заказов
-      setOrdersLoading(true);
-      const updatedOrders = await apiGetAdminOrders(token);
-      setOrders(updatedOrders.orders);
+      await refreshOrders();
     } catch (e: any) {
       setOrdersError(e.message || 'Ошибка обновления статуса');
-    } finally {
-      setOrdersLoading(false);
     }
   };
 
@@ -47,15 +44,75 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
       console.log('Assigning courier:', { orderId, courierId });
       await apiAssignCourier(token, courierId, orderId);
       // После успешного назначения курьера — обновить список заказов
-      setOrdersLoading(true);
-      const updatedOrders = await apiGetAdminOrders(token);
-      setOrders(updatedOrders.orders);
+      await refreshOrders();
     } catch (e: any) {
       console.error('Error assigning courier:', e);
       setOrdersError(e.message || 'Ошибка назначения курьера');
+    }
+  };
+
+  // Функция перезагрузки заказов
+  // Загрузка заказов с пагинацией
+  const loadOrders = async (page = 1) => {
+    if (!token) return;
+    try {
+      setOrdersLoading(true);
+      setOrdersError('');
+      console.log('Loading orders page:', page);
+      
+      // API вызов с параметрами пагинации
+      const data = await apiGetAdminOrders(token, { page, limit: 10 });
+      console.log('Orders loaded:', data);
+      console.log('Orders array:', data?.orders);
+      console.log('Pagination data:', data?.pagination);
+      
+      if (data && data.orders) {
+        setOrders(data.orders || []);
+        // Проверяем наличие пагинации в ответе
+        if (data.pagination) {
+          console.log('Using pagination data from server');
+          setOrdersCurrentPage(data.pagination.page || page);
+          setOrdersTotalPages(data.pagination.totalPages || 1);
+          setOrdersTotalCount(data.pagination.total || 0);
+        } else {
+          console.log('No pagination data, using fallback');
+          // Fallback: если больше 10 заказов, показываем пагинацию
+          const ordersCount = data.orders.length;
+          setOrdersCurrentPage(page);
+          setOrdersTotalPages(Math.max(1, Math.ceil(ordersCount / 10)));
+          setOrdersTotalCount(ordersCount);
+        }
+      } else {
+        console.log('No orders data received');
+        setOrders([]);
+        setOrdersCurrentPage(1);
+        setOrdersTotalPages(1);
+        setOrdersTotalCount(0);
+      }
+      
+      console.log('Final pagination state:', {
+        currentPage: page,
+        totalPages: Math.max(1, Math.ceil((data?.orders?.length || 0) / 10)),
+        totalCount: data?.orders?.length || 0
+      });
+      
+    } catch (e: any) {
+      console.error('Orders loading error:', e);
+      setOrdersError(e.message || 'Ошибка загрузки заказов');
+      setOrders([]);
     } finally {
       setOrdersLoading(false);
     }
+  };
+
+  // Обновление заказов (первая страница)
+  const refreshOrders = async () => {
+    await loadOrders(1);
+  };
+
+  // Обработчик изменения страницы заказов
+  const handleOrdersPageChange = async (page: number) => {
+    await loadOrders(page);
   };
   const [section, setSection] = useState<'users' | 'products' | 'orders' | 'categories' | 'stores' | 'couriers' | 'analytics' | 'stock' | null>(null);
 
@@ -74,6 +131,12 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
   const [orders, setOrders] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
+  
+  // Состояния для пагинации заказов
+  const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+  const [ordersTotalPages, setOrdersTotalPages] = useState(1);
+  const [ordersTotalCount, setOrdersTotalCount] = useState(0);
+  
   const [stockInfo] = useState<any>(null);
   const [stockHistory] = useState<any[]>([]);
   const [stockLoading] = useState(false);
@@ -108,19 +171,7 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
         .finally(() => setCatLoading(false));
     }
     if (section === 'orders' && token) {
-      setOrdersLoading(true);
-      setOrdersError('');
-      console.log('Loading orders...');
-      apiGetAdminOrders(token)
-        .then((data: any) => {
-          console.log('Orders API response:', data);
-          setOrders(data.orders || data || []);
-        })
-        .catch((e: any) => {
-          console.error('Orders API error:', e);
-          setOrdersError(e.message || 'Ошибка загрузки заказов');
-        })
-        .finally(() => setOrdersLoading(false));
+      loadOrders(1);
     }
   }, [section, token]);
 
@@ -228,6 +279,11 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
           onBack={() => setSection(null)}
           onStatusChange={onStatusChange}
           onAssignCourier={onAssignCourier}
+          onRefresh={refreshOrders}
+          onPageChange={handleOrdersPageChange}
+          currentPage={ordersCurrentPage}
+          totalPages={ordersTotalPages}
+          totalOrders={ordersTotalCount}
           token={token}
         />
       )}
@@ -259,6 +315,9 @@ const AdminPage: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, t
       )}
       {section === 'analytics' && token && (
         <AdminAnalytics token={token} />
+      )}
+      {section === 'stores' && token && (
+        <AdminStores token={token} onBack={() => setSection(null)} />
       )}
       {/* ...existing code for categories, stores... */}
     </div>

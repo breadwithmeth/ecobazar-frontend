@@ -6,7 +6,7 @@ interface User {
   telegram_user_id: string;
   name: string | null;
   phone_number: string | null;
-  role: 'CUSTOMER' | 'COURIER' | 'ADMIN';
+  role: 'CUSTOMER' | 'COURIER' | 'ADMIN' | 'SELLER';
   _count: {
     orders: number;
     deliveredOrders: number;
@@ -43,7 +43,7 @@ const AdminUsers: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, 
 
   // Состояние для модального окна изменения роли
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [newRole, setNewRole] = useState<'CUSTOMER' | 'COURIER' | 'ADMIN'>('CUSTOMER');
+  const [newRole, setNewRole] = useState<'CUSTOMER' | 'COURIER' | 'ADMIN' | 'SELLER'>('CUSTOMER');
   const [isChangingRole, setIsChangingRole] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -156,6 +156,7 @@ const AdminUsers: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, 
       case 'ADMIN': return '#ff6b6b';
       case 'COURIER': return '#4ecdc4';
       case 'CUSTOMER': return '#95a5a6';
+      case 'SELLER': return '#9b59b6';
       default: return '#95a5a6';
     }
   };
@@ -165,6 +166,7 @@ const AdminUsers: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, 
       case 'ADMIN': return 'Администратор';
       case 'COURIER': return 'Курьер';
       case 'CUSTOMER': return 'Клиент';
+      case 'SELLER': return 'Продавец';
       default: return role;
     }
   };
@@ -547,7 +549,7 @@ const AdminUsers: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, 
               </label>
               <select
                 value={newRole}
-                onChange={(e) => setNewRole(e.target.value as 'CUSTOMER' | 'COURIER' | 'ADMIN')}
+                onChange={(e) => setNewRole(e.target.value as 'CUSTOMER' | 'COURIER' | 'ADMIN' | 'SELLER')}
                 disabled={isChangingRole}
                 style={{
                   width: '100%',
@@ -561,6 +563,7 @@ const AdminUsers: React.FC<{ onBack: () => void; token?: string }> = ({ onBack, 
                 <option value="CUSTOMER">Клиент</option>
                 <option value="COURIER">Курьер</option>
                 <option value="ADMIN">Администратор</option>
+                <option value="SELLER">Продавец</option>
               </select>
               
               {newRole === 'ADMIN' && newRole !== selectedUser.role && (

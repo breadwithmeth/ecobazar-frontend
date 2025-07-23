@@ -1,31 +1,40 @@
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { apiGetUser, apiGetCategories, apiGetProducts, apiGetMyOrders } from '../api';
 import ProfilePage from './ProfilePage';
 import CartPage from './CartPage';
 import BottomBar from '../components/BottomBar';
 import ProfileFillPage from './ProfileFillPage';
 import AdminPage from './AdminPage';
+import CourierPage from './CourierPage';
+import SellerPage from './SellerPage';
+import { Page } from '../types/navigation';
 
-interface OrderProduct {
-  id: number;
-  name: string;
-  price: number;
-  qty: number;
-}
-
-interface OrderStatus {
+interface OrderItem {
   id: number;
   orderId: number;
-  status: string;
-  createdAt: string;
+  productId: number;
+  quantity: number;
+  price: number | null;
+  product: {
+    id: number;
+    name: string;
+    price: number;
+    image: string | null;
+  };
 }
 
 interface Order {
   id: number;
-  products?: OrderProduct[];
-  status?: string;
-  statuses?: OrderStatus[];
+  address: string;
+  createdAt: string;
+  items: OrderItem[];
+  totalAmount: number;
+  status: string | null;
+  statusUpdatedAt: string;
+  itemsCount: number;
+  deliveryType?: 'ASAP' | 'SCHEDULED';
+  scheduledDate?: string;
 }
 
 // Отображение статуса заказа на русском
@@ -34,11 +43,101 @@ function statusLabel(status: string) {
    
     case 'NEW': return 'Новый';
     case 'WAITING_PAYMENT': return 'Ожидает оплаты';
-    case 'ASSEMBLY': return 'Сборка';
-    case 'SHIPPING': return 'В пути';
+    case 'PREPARING': return 'Готовится';
+    case 'DELIVERING': return 'Доставляется';
     case 'DELIVERED': return 'Доставлен';
+    case 'CANCELLED': return 'Отменён';
     default: return status;
   }
+}
+
+// Функция для отображения типа доставки
+function deliveryTypeLabel(deliveryType?: string, scheduledDate?: string) {
+  if (!deliveryType) return '';
+  
+  switch (deliveryType) {
+    case 'ASAP': return '🚀 Как можно скорее';
+    case 'SCHEDULED': 
+      if (scheduledDate) {
+        const date = new Date(scheduledDate);
+        return `📅 Запланирована на ${date.toLocaleString('ru-RU', {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}`;
+      }
+      return '📅 Запланированная доставка';
+    default: return deliveryType;
+  }
+}
+
+// Функция для расчета общей стоимости заказа
+function calculateOrderTotal(items: OrderItem[]): number {
+  return items.reduce((sum, item) => {
+    const price = item.price || item.product.price;
+    return sum + (price * item.quantity);
+  }, 0);
+}
+
+// Функция для расчета оставшегося времени доставки ASAP
+function calculateDeliveryTimeRemaining(createdAt: string): { timeLeft: string; isExpired: boolean } {
+  const orderTime = new Date(createdAt);
+  const deliveryTime = new Date(orderTime.getTime() + 60 * 60 * 1000); // +1 час
+  const now = new Date();
+  const timeRemaining = deliveryTime.getTime() - now.getTime();
+  
+  if (timeRemaining <= 0) {
+    return { timeLeft: "Время доставки истекло", isExpired: true };
+  }
+  
+  const minutes = Math.floor(timeRemaining / (1000 * 60));
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours > 0) {
+    return { timeLeft: `${hours}ч ${remainingMinutes}м`, isExpired: false };
+  } else {
+    return { timeLeft: `${remainingMinutes}м`, isExpired: false };
+  }
+}
+
+// Кастомный хук для интервала
+function useInterval(callback: () => void, delay: number | null) {
+  const savedCallback = useRef(callback);
+
+  useEffect(() => {
+    savedCallback.current = callback;
+  }, [callback]);
+
+  useEffect(() => {
+    if (delay === null) return;
+    
+    const id = setInterval(() => savedCallback.current(), delay);
+    return () => clearInterval(id);
+  }, [delay]);
+}
+
+// Функция для сравнения массивов заказов
+function ordersEqual(orders1: Order[], orders2: Order[]): boolean {
+  if (orders1.length !== orders2.length) return false;
+  
+  for (let i = 0; i < orders1.length; i++) {
+    const o1 = orders1[i];
+    const o2 = orders2[i];
+    
+    if (
+      o1.id !== o2.id ||
+      o1.status !== o2.status ||
+      o1.totalAmount !== o2.totalAmount ||
+      o1.itemsCount !== o2.itemsCount ||
+      o1.items.length !== o2.items.length
+    ) {
+      return false;
+    }
+  }
+  
+  return true;
 }
 
 
@@ -60,32 +159,97 @@ interface CartItem {
   qty: number;
 }
 
-type Page = 'catalog' | 'profile' | 'cart' | 'admin';
-
 const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
+  // Добавляем CSS анимацию для спиннера
+  const spinnerStyle = `
+    @keyframes spin {
+      0% { transform: translateY(-50%) rotate(0deg); }
+      100% { transform: translateY(-50%) rotate(360deg); }
+    }
+  `;
+  
+  // Вставляем стили в документ
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = spinnerStyle;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   // Заказы пользователя
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [backgroundRefreshing, setBackgroundRefreshing] = useState(false);
+  
+  // Состояние для обновления таймеров ASAP заказов
+  const [timerTick, setTimerTick] = useState(0);
 
-  useEffect(() => {
-    setOrdersLoading(true);
-    apiGetMyOrders(token)
-      .then((data: any) => {
-        // Исключаем доставленные
-        const allOrders = Array.isArray(data) ? data : data.orders;
-        setOrders(allOrders.filter((o: Order) => o.status !== 'delivered'));
-        setOrdersError('');
-      })
-      .catch((e: any) => setOrdersError(e.message))
-      .finally(() => setOrdersLoading(false));
+  // Функция для загрузки заказов
+  const loadOrders = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setOrdersLoading(true);
+    } else {
+      setBackgroundRefreshing(true);
+    }
+    
+    try {
+      const response: any = await apiGetMyOrders(token);
+      // Новый формат API: {success, data, meta}
+      const ordersData = response.success ? response.data : response;
+      const allOrders = Array.isArray(ordersData) ? ordersData : [];
+      // Исключаем доставленные и отменённые заказы
+      const filteredOrders = allOrders.filter((o: Order) => 
+        o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+      );
+      
+      // Обновляем состояние только если заказы изменились
+      setOrders(prevOrders => {
+        if (ordersEqual(prevOrders, filteredOrders)) {
+          return prevOrders; // Не обновляем если ничего не изменилось
+        }
+        return filteredOrders;
+      });
+      
+      setOrdersError('');
+    } catch (e: any) {
+      setOrdersError(e.message);
+    } finally {
+      if (showLoading) {
+        setOrdersLoading(false);
+      } else {
+        setBackgroundRefreshing(false);
+      }
+    }
   }, [token]);
+
+  // Первоначальная загрузка заказов
+  useEffect(() => {
+    loadOrders(true);
+  }, [loadOrders]);
+
+  // Автоматическое обновление каждые 3 секунды (без показа loading)
+  useInterval(() => {
+    if (!ordersLoading) { // Не обновляем если уже идет загрузка
+      loadOrders(false);
+    }
+  }, 3000);
+  
+  // Обновление таймеров ASAP заказов каждую минуту
+  useInterval(() => {
+    setTimerTick(prev => prev + 1);
+  }, 60000);
   const [page, setPage] = useState<Page>('catalog');
   const [showProfileFill, setShowProfileFill] = useState(false);
   const [user, setUser] = useState<any>(null);
   
-  // Проверка, является ли пользователь администратором
+  // Проверка ролей пользователя
   const isAdmin = user && (user.role === 'ADMIN' || user.id === 1001);
+  const isCourier = user && user.role === 'COURIER';
+  const isSeller = user && user.role === 'SELLER';
   
   // Проверка профиля пользователя при загрузке
   useEffect(() => {
@@ -122,6 +286,16 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   // Поиск
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  
+  // Debounce для поиска - задержка 500мс
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [search]);
   
   // Добавляем категорию "Без категории" для товаров с categoryId: null
   const allCategories = [
@@ -169,8 +343,8 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
     
     const filters: any = {};
     
-    if (search) {
-      filters.search = search;
+    if (debouncedSearch) {
+      filters.search = debouncedSearch;
     }
     
     if (filterCategory) {
@@ -192,7 +366,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [token, search, filterCategory]);
+  }, [token, debouncedSearch, filterCategory]);
 
   // Центрировать выбранную категорию в списке
   useEffect(() => {
@@ -207,9 +381,10 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
     }
   }, [filterCategory]);
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: 48 }}>Загрузка каталога...</div>;
-  if (error) return <div style={{ color: 'red', textAlign: 'center', marginTop: 48 }}>{error}</div>;
-  if (!products.length) return <div style={{ textAlign: 'center', marginTop: 48 }}>Нет товаров</div>;
+  // Ранние возвраты только для критических ошибок загрузки
+  if (error && !products.length && !loading) {
+    return <div style={{ color: 'red', textAlign: 'center', marginTop: 48 }}>{error}</div>;
+  }
 
 
   if (showProfileFill) {
@@ -217,6 +392,12 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
   }
   if (page === 'admin' && isAdmin) {
     return <AdminPage onBack={() => setPage('catalog')} token={token} />;
+  }
+  if (page === 'courier' && isCourier) {
+    return <CourierPage onBack={() => setPage('catalog')} token={token} />;
+  }
+  if (page === 'seller' && isSeller) {
+    return <SellerPage onBack={() => setPage('catalog')} token={token} />;
   }
   if (page === 'profile') {
     return <ProfilePage token={token} onNavigate={setPage} />;
@@ -235,6 +416,131 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   return (
     <div style={{ background: '#f7f7f7', minHeight: '100vh', position: 'relative', padding: '8px 0' }}>
+      {/* Модальное окно с детальной информацией о заказе */}
+      {selectedOrder && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => setSelectedOrder(null)}
+        >
+          <div 
+            style={{
+              background: '#fff',
+              borderRadius: 18,
+              padding: 20,
+              maxWidth: 400,
+              width: '100%',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Заказ #{selectedOrder.id}</h3>
+              <button 
+                onClick={() => setSelectedOrder(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  color: '#999'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 8 }}>
+                <strong>Статус:</strong> {statusLabel(selectedOrder.status || 'NEW')}
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <strong>Адрес доставки:</strong> {selectedOrder.address}
+              </div>
+              {selectedOrder.deliveryType && (
+                <div style={{ marginBottom: 8 }}>
+                  <strong>Тип доставки:</strong> <span style={{ color: '#6BCB3D' }}>{deliveryTypeLabel(selectedOrder.deliveryType, selectedOrder.scheduledDate)}</span>
+                  {selectedOrder.deliveryType === 'ASAP' && (() => {
+                    const { timeLeft, isExpired } = calculateDeliveryTimeRemaining(selectedOrder.createdAt);
+                    return (
+                      <div style={{ 
+                        color: isExpired ? '#f44336' : '#FF9800', 
+                        fontWeight: 600,
+                        fontSize: 14,
+                        marginTop: 4,
+                        padding: '6px 12px',
+                        background: isExpired ? '#ffebee' : '#fff3e0',
+                        borderRadius: 8,
+                        border: `1px solid ${isExpired ? '#ffcdd2' : '#ffe0b2'}`,
+                        display: 'inline-block'
+                      }}>
+                        ⏱️ {timeLeft}
+                        {!isExpired && <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>до доставки</div>}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              <div style={{ marginBottom: 8 }}>
+                <strong>Дата создания:</strong> {new Date(selectedOrder.createdAt).toLocaleDateString('ru-RU', {
+                  day: '2-digit',
+                  month: '2-digit', 
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <strong style={{ fontSize: 16, marginBottom: 8, display: 'block' }}>Товары:</strong>
+              {selectedOrder.items.map((item, index) => (
+                <div key={item.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 0',
+                  borderBottom: index < selectedOrder.items.length - 1 ? '1px solid #f0f0f0' : 'none'
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{item.product.name}</div>
+                    <div style={{ fontSize: 14, color: '#888' }}>Количество: {item.quantity}</div>
+                  </div>
+                  <div style={{ fontWeight: 600, color: '#6BCB3D' }}>
+                    {(item.price || item.product.price) ? `${(item.price || item.product.price) * item.quantity}₸` : 'Цена не указана'}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ 
+              borderTop: '1px solid #f0f0f0', 
+              paddingTop: 16, 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <strong style={{ fontSize: 18 }}>Итого:</strong>
+              <strong style={{ fontSize: 18, color: '#6BCB3D' }}>
+                {selectedOrder.totalAmount || calculateOrderTotal(selectedOrder.items)}₸
+              </strong>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Sticky header вне скроллируемой области */}
       <div
         style={{
@@ -273,25 +579,78 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
               🔧 Админ
             </button>
           )}
+          {isCourier && (
+            <button 
+              onClick={() => setPage('courier')}
+              style={{ 
+                background: '#FF9800', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: 8, 
+                padding: '6px 12px', 
+                fontSize: 12, 
+                fontWeight: 600, 
+                cursor: 'pointer',
+                marginLeft: 8
+              }}
+            >
+              🚚 Курьер
+            </button>
+          )}
+          {isSeller && (
+            <button 
+              onClick={() => setPage('seller')}
+              style={{ 
+                background: '#673AB7', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: 8, 
+                padding: '6px 12px', 
+                fontSize: 12, 
+                fontWeight: 600, 
+                cursor: 'pointer',
+                marginLeft: 8
+              }}
+            >
+              🏪 Продавец
+            </button>
+          )}
           <span style={{ fontSize: 20, marginLeft: 'auto', color: '#6BCB3D', cursor: 'pointer' }}>☰</span>
         </div>
         <div style={{ maxWidth: 420, margin: '0 auto', boxSizing: 'border-box', width: '100%', padding: '0 0 0 0' }}>
-          <input
-            type="text"
-            placeholder="Поиск"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '12px 18px',
-              borderRadius: 12,
-              border: '1px solid #e0e0e0',
-              marginBottom: 12,
-              fontSize: 16,
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Поиск"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 18px',
+                borderRadius: 12,
+                border: '1px solid #e0e0e0',
+                marginBottom: 12,
+                fontSize: 16,
+                outline: 'none',
+                boxSizing: 'border-box',
+                paddingRight: search !== debouncedSearch ? '45px' : '18px',
+              }}
+            />
+            {search !== debouncedSearch && (
+              <div style={{
+                position: 'absolute',
+                right: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 16,
+                height: 16,
+                border: '2px solid #6BCB3D',
+                borderTopColor: 'transparent',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }} />
+            )}
+          </div>
 
 
 
@@ -386,44 +745,75 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
               padding: '14px 12px 10px 12px',
               marginBottom: 8,
             }}>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: '#222' }}>Ваши заказы</div>
-              {(orders || []).map((order: Order) => {
-                // Найти последний статус по времени
-                let lastStatus = order.status;
-                if (Array.isArray(order.statuses) && order.statuses.length > 0) {
-                  lastStatus = order.statuses.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0].status;
-                }
-                return (
-                  <div key={order.id} style={{
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: '#222', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Ваши заказы
+                {backgroundRefreshing && (
+                  <div style={{
+                    width: 12,
+                    height: 12,
+                    border: '2px solid #6BCB3D',
+                    borderTopColor: 'transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite',
+                  }} />
+                )}
+              </div>
+              {(orders || []).map((order: Order) => (
+                <div 
+                  key={order.id} 
+                  style={{
                     borderBottom: '1px solid #f0f0f0',
                     paddingBottom: 8,
                     marginBottom: 8,
                     fontSize: 15,
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontWeight: 600 }}>Заказ #{order.id}</span>
-                      <span style={{
-                        background: '#f7f7f7',
-                        borderRadius: 8,
-                        padding: '2px 8px',
-                        fontSize: 13,
-                        color: '#6BCB3D',
-                        fontWeight: 600,
-                      }}>{statusLabel(lastStatus || '')}</span>
-                    </div>
-                    <div style={{ color: '#888', fontSize: 14, marginBottom: 2 }}>
-                      {Array.isArray(order.products)
-                        ? order.products.map((p: OrderProduct) => `${p.name} ×${p.qty}`).join(', ')
-                        : null}
-                    </div>
-                    <div style={{ color: '#222', fontWeight: 600, fontSize: 15 }}>
-                      {Array.isArray(order.products)
-                        ? order.products.reduce((sum: number, p: OrderProduct) => sum + p.price * p.qty, 0)
-                        : 0}₸
-                    </div>
+                    cursor: 'pointer',
+                    padding: '8px',
+                    borderRadius: 8,
+                    transition: 'background 0.2s',
+                  }}
+                  onClick={() => setSelectedOrder(order)}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#f9f9f9'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontWeight: 600 }}>Заказ #{order.id}</span>
+                    <span style={{
+                      background: '#f7f7f7',
+                      borderRadius: 8,
+                      padding: '2px 8px',
+                      fontSize: 13,
+                      color: '#6BCB3D',
+                      fontWeight: 600,
+                    }}>{statusLabel(order.status || 'NEW')}</span>
                   </div>
-                );
-              })}
+                  <div style={{ color: '#888', fontSize: 14, marginBottom: 2 }}>
+                    {order.items?.map((item: OrderItem) => 
+                      `${item.product.name} ×${item.quantity}`
+                    ).join(', ')}
+                  </div>
+                  {order.deliveryType && (
+                    <div style={{ color: '#6BCB3D', fontSize: 13, marginBottom: 2, fontWeight: 500 }}>
+                      {deliveryTypeLabel(order.deliveryType, order.scheduledDate)}
+                      {order.deliveryType === 'ASAP' && (() => {
+                        const { timeLeft, isExpired } = calculateDeliveryTimeRemaining(order.createdAt);
+                        return (
+                          <span style={{ 
+                            color: isExpired ? '#f44336' : '#FF9800', 
+                            fontWeight: 600,
+                            marginLeft: 8,
+                            fontSize: 12
+                          }}>
+                            ⏱️ {timeLeft}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  <div style={{ color: '#222', fontWeight: 600, fontSize: 15 }}>
+                    {order.totalAmount || calculateOrderTotal(order.items)}₸
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -431,11 +821,58 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
         {/* Список товаров */}
         <div style={{ padding: '20px 2px' }}>
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>Загрузка...</div>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
+              <div style={{ marginBottom: 16, fontSize: 18 }}>⏳</div>
+              <div>Загрузка товаров...</div>
+            </div>
           ) : error ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#f44336' }}>{error}</div>
+            <div style={{ textAlign: 'center', padding: 40, color: '#f44336' }}>
+              <div style={{ marginBottom: 16, fontSize: 18 }}>❌</div>
+              <div>{error}</div>
+              <button
+                onClick={() => window.location.reload()}
+                style={{
+                  marginTop: 16,
+                  background: '#6BCB3D',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  cursor: 'pointer'
+                }}
+              >
+                Попробовать снова
+              </button>
+            </div>
           ) : products.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>Товары не найдены</div>
+            <div style={{ textAlign: 'center', padding: 40, color: '#666' }}>
+              <div style={{ marginBottom: 16, fontSize: 32 }}>🔍</div>
+              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Товары не найдены</div>
+              <div style={{ fontSize: 14, color: '#888' }}>
+                {search ? `По запросу "${search}" ничего не найдено` : 
+                 filterCategory ? 'В данной категории нет товаров' : 
+                 'Нет доступных товаров'}
+              </div>
+              {(search || filterCategory) && (
+                <button
+                  onClick={() => {
+                    setSearch('');
+                    setFilterCategory(null);
+                  }}
+                  style={{
+                    marginTop: 16,
+                    background: '#6BCB3D',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Сбросить фильтры
+                </button>
+              )}
+            </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
               {products.map(p => (
