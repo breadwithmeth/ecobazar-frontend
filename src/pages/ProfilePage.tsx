@@ -181,14 +181,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
                     />
                   </div>
                   
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <div style={{ marginBottom: 8 }}>
                     <input
                       type="text"
                       placeholder="Дом"
                       value={newHouse}
                       onChange={e => setNewHouse(e.target.value)}
                       style={{ 
-                        flex: 1,
+                        width: '100%',
                         padding: '8px 12px', 
                         borderRadius: 8, 
                         border: '1px solid #e0e0e0', 
@@ -196,13 +196,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
                         boxSizing: 'border-box'
                       }}
                     />
+                  </div>
+                  
+                  <div style={{ marginBottom: 8 }}>
                     <input
                       type="text"
                       placeholder="Квартира (необязательно)"
                       value={newApartment}
                       onChange={e => setNewApartment(e.target.value)}
                       style={{ 
-                        flex: 1,
+                        width: '100%',
                         padding: '8px 12px', 
                         borderRadius: 8, 
                         border: '1px solid #e0e0e0', 
