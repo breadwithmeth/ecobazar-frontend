@@ -41,6 +41,8 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
   // Состояния для создания нового адреса
   const [showNewAddressForm, setShowNewAddressForm] = useState(false);
   const [newAddress, setNewAddress] = useState('');
+  const [newHouse, setNewHouse] = useState('');
+  const [newApartment, setNewApartment] = useState('');
   const [addingAddress, setAddingAddress] = useState(false);
   const [addressError, setAddressError] = useState('');
 
@@ -71,14 +73,26 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
       setAddressError('Введите адрес');
       return;
     }
+    if (!newHouse.trim()) {
+      setAddressError('Введите номер дома');
+      return;
+    }
+
+    // Объединяем поля в одну строку адреса
+    let fullAddress = `${newAddress.trim()}, д. ${newHouse.trim()}`;
+    if (newApartment.trim()) {
+      fullAddress += `, кв. ${newApartment.trim()}`;
+    }
 
     setAddingAddress(true);
     setAddressError('');
     try {
-      const addedAddress = await apiAddAddress(token!, newAddress.trim());
+      const addedAddress = await apiAddAddress(token!, fullAddress);
       setAddresses(prev => [...prev, addedAddress]);
       setAddressId(addedAddress.id);
       setNewAddress('');
+      setNewHouse('');
+      setNewApartment('');
       setShowNewAddressForm(false);
     } catch (err: any) {
       setAddressError(err.message || 'Ошибка добавления адреса');
@@ -246,26 +260,58 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                         </div>
                       )}
                       
-                      <input
-                        type="text"
-                        placeholder="Введите полный адрес доставки"
-                        value={newAddress}
-                        onChange={e => setNewAddress(e.target.value)}
-                        style={{ 
-                          width: '100%', 
-                          padding: '8px 12px', 
-                          borderRadius: 6, 
-                          border: '1px solid #ddd', 
-                          fontSize: 14, 
-                          marginBottom: 8,
-                          boxSizing: 'border-box'
-                        }}
-                      />
+                      <div style={{ marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          placeholder="Улица"
+                          value={newAddress}
+                          onChange={e => setNewAddress(e.target.value)}
+                          style={{ 
+                            width: '100%', 
+                            padding: '8px 12px', 
+                            borderRadius: 6, 
+                            border: '1px solid #ddd', 
+                            fontSize: 14,
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          placeholder="Дом"
+                          value={newHouse}
+                          onChange={e => setNewHouse(e.target.value)}
+                          style={{ 
+                            flex: 1,
+                            padding: '8px 12px', 
+                            borderRadius: 6, 
+                            border: '1px solid #ddd', 
+                            fontSize: 14,
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Квартира (необязательно)"
+                          value={newApartment}
+                          onChange={e => setNewApartment(e.target.value)}
+                          style={{ 
+                            flex: 1,
+                            padding: '8px 12px', 
+                            borderRadius: 6, 
+                            border: '1px solid #ddd', 
+                            fontSize: 14,
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
                       
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
                           onClick={handleAddAddress}
-                          disabled={addingAddress || !newAddress.trim()}
+                          disabled={addingAddress || !newAddress.trim() || !newHouse.trim()}
                           style={{
                             background: addingAddress ? '#ccc' : '#6BCB3D',
                             color: '#fff',
@@ -276,7 +322,7 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                             fontWeight: 600,
                             cursor: addingAddress ? 'wait' : 'pointer',
                             flex: 1,
-                            opacity: !newAddress.trim() ? 0.6 : 1
+                            opacity: (!newAddress.trim() || !newHouse.trim()) ? 0.6 : 1
                           }}
                         >
                           {addingAddress ? 'Добавление...' : 'Сохранить адрес'}
@@ -286,6 +332,8 @@ const CartPage: React.FC<CartPageProps> = ({ cart, products, onCartChange, onBac
                           onClick={() => {
                             setShowNewAddressForm(false);
                             setNewAddress('');
+                            setNewHouse('');
+                            setNewApartment('');
                             setAddressError('');
                           }}
                           style={{

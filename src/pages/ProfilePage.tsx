@@ -41,6 +41,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [adding, setAdding] = useState(false);
   const [newAddress, setNewAddress] = useState('');
+  const [newHouse, setNewHouse] = useState('');
+  const [newApartment, setNewApartment] = useState('');
   const [addError, setAddError] = useState('');
   const [showAdmin, setShowAdmin] = useState(false);
   useEffect(() => {
@@ -55,10 +57,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
       setAddError('Введите адрес');
       return;
     }
+    if (!newHouse.trim()) {
+      setAddError('Введите номер дома');
+      return;
+    }
+
+    // Объединяем поля в одну строку адреса
+    let fullAddress = `${newAddress.trim()}, д. ${newHouse.trim()}`;
+    if (newApartment.trim()) {
+      fullAddress += `, кв. ${newApartment.trim()}`;
+    }
+
     try {
-      const created = await apiAddAddress(token, newAddress);
+      const created = await apiAddAddress(token, fullAddress);
       setAddresses(prev => [...prev, created]);
       setNewAddress('');
+      setNewHouse('');
+      setNewApartment('');
       setAdding(false);
     } catch (e: any) {
       setAddError(e.message || 'Ошибка');
@@ -142,26 +157,92 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
                 ))}
               </ul>
               {adding ? (
-                <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-                  <input
-                    type="text"
-                    value={newAddress}
-                    onChange={e => setNewAddress(e.target.value)}
-                    placeholder="Введите адрес"
-                    style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #e0e0e0', fontSize: 15 }}
-                  />
-                  <button
-                    onClick={handleAddAddress}
-                    style={{ background: '#6BCB3D', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 16, padding: '8px 16px', cursor: 'pointer' }}
-                  >
-                    Добавить
-                  </button>
-                  <button
-                    onClick={() => { setAdding(false); setNewAddress(''); setAddError(''); }}
-                    style={{ background: '#eee', color: '#888', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 16, padding: '8px 12px', cursor: 'pointer' }}
-                  >
-                    ×
-                  </button>
+                <div style={{ marginTop: 10 }}>
+                  {addError && (
+                    <div style={{ color: 'red', fontSize: 13, marginBottom: 8 }}>
+                      {addError}
+                    </div>
+                  )}
+                  
+                  <div style={{ marginBottom: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Улица"
+                      value={newAddress}
+                      onChange={e => setNewAddress(e.target.value)}
+                      style={{ 
+                        width: '100%', 
+                        padding: '8px 12px', 
+                        borderRadius: 8, 
+                        border: '1px solid #e0e0e0', 
+                        fontSize: 15,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Дом"
+                      value={newHouse}
+                      onChange={e => setNewHouse(e.target.value)}
+                      style={{ 
+                        flex: 1,
+                        padding: '8px 12px', 
+                        borderRadius: 8, 
+                        border: '1px solid #e0e0e0', 
+                        fontSize: 15,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Квартира (необязательно)"
+                      value={newApartment}
+                      onChange={e => setNewApartment(e.target.value)}
+                      style={{ 
+                        flex: 1,
+                        padding: '8px 12px', 
+                        borderRadius: 8, 
+                        border: '1px solid #e0e0e0', 
+                        fontSize: 15,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={handleAddAddress}
+                      disabled={!newAddress.trim() || !newHouse.trim()}
+                      style={{ 
+                        background: (!newAddress.trim() || !newHouse.trim()) ? '#ccc' : '#6BCB3D', 
+                        color: '#fff', 
+                        border: 'none', 
+                        borderRadius: 8, 
+                        fontWeight: 600, 
+                        fontSize: 16, 
+                        padding: '8px 16px', 
+                        cursor: (!newAddress.trim() || !newHouse.trim()) ? 'not-allowed' : 'pointer',
+                        flex: 1
+                      }}
+                    >
+                      Добавить
+                    </button>
+                    <button
+                      onClick={() => { 
+                        setAdding(false); 
+                        setNewAddress(''); 
+                        setNewHouse(''); 
+                        setNewApartment(''); 
+                        setAddError(''); 
+                      }}
+                      style={{ background: '#eee', color: '#888', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 16, padding: '8px 12px', cursor: 'pointer' }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
@@ -171,7 +252,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ token, onNavigate }) => {
                   + Добавить адрес
                 </button>
               )}
-              {addError && <div style={{ color: 'red', fontSize: 14, marginTop: 6 }}>{addError}</div>}
             </div>
           </>
         ) : null}
