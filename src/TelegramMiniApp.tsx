@@ -85,7 +85,7 @@ const TelegramMiniApp: React.FC = () => {
     // Если пользователь не найден сразу, используем fallback
     if (!foundUser) {
       console.log('No Telegram user found, using fallback');
-      setUserId(123);
+      setUserId(1884873765);
       setIsInitialized(true);
       return;
     }
@@ -163,7 +163,7 @@ const TelegramMiniApp: React.FC = () => {
         <button
           onClick={() => {
             console.log('Manual test userId set');
-            setUserId(123);
+            setUserId(1884873765);
           }}
           style={{
             background: '#2196F3',
