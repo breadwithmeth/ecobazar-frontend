@@ -180,6 +180,11 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
 
   // Заказы пользователя
   const [orders, setOrders] = useState<Order[]>([]);
+  // Показывать только заказы за последние 12 часов
+  const recentOrders = orders.filter(order => {
+    const created = new Date(order.createdAt).getTime();
+    return Date.now() - created <= 12 * 60 * 60 * 1000;
+  });
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -758,7 +763,7 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
                   }} />
                 )}
               </div>
-              {(orders || []).map((order: Order) => (
+          {(recentOrders || []).map((order: Order) => (
                 <div 
                   key={order.id} 
                   style={{
