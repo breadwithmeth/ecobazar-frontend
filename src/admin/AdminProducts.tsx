@@ -109,50 +109,24 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         console.log('Stores API response:', storesData);
         console.log('Stores type:', typeof storesData, 'isArray:', Array.isArray(storesData));
         
-        // Проверяем, есть ли данные
-        if (!storesData || storesData === undefined || storesData === null) {
-          console.log('⚠️ Stores API returned empty/null data, using mock stores');
-          const mockStores = [
-            { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
-            { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
-            { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
-          ];
-          setStores(mockStores);
+        // Проверяем новый формат API: { success: true, data: [...], meta: {...} }
+        if (storesData && storesData.success && storesData.data) {
+          console.log(`✅ New API format - ${storesData.data.length} stores:`, storesData.data);
+          setStores(storesData.data);
         } else if (Array.isArray(storesData)) {
           console.log(`✅ Direct array format - ${storesData.length} stores:`, storesData);
           setStores(storesData);
         } else if (storesData && typeof storesData === 'object' && storesData.stores) {
           console.log(`✅ Wrapper format - ${storesData.stores.length} stores:`, storesData.stores);
           setStores(storesData.stores);
-        } else if (storesData && typeof storesData === 'object') {
-          console.log('Object keys:', Object.keys(storesData));
-          console.log('❌ Unexpected stores object structure, using mock stores');
-          const mockStores = [
-            { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
-            { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
-            { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
-          ];
-          setStores(mockStores);
         } else {
-          console.log('❌ Unexpected stores data type, using mock stores');
-          const mockStores = [
-            { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
-            { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
-            { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
-          ];
-          setStores(mockStores);
+          console.log('⚠️ No stores data found, setting empty array');
+          setStores([]);
         }
         console.log('=== END STORES DEBUG ===');
       } else {
         console.log('❌ Stores API failed:', storesResponse.reason);
-        // Заглушка для тестирования при ошибке API
-        const mockStores = [
-          { id: 1, name: 'Тестовый магазин №1', address: 'ул. Тестовая, 1' },
-          { id: 2, name: 'Тестовый магазин №2', address: 'ул. Тестовая, 2' },
-          { id: 3, name: 'Тестовый магазин №3', address: 'ул. Тестовая, 3' }
-        ];
-        console.log('🔧 Using mock stores for API failure:', mockStores);
-        setStores(mockStores);
+        setStores([]);
       }
 
       // Обработка категорий
@@ -314,14 +288,15 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
       {/* Кнопка создания нового продукта */}
       <button
         onClick={() => setShowCreateForm(!showCreateForm)}
+        disabled={stores.length === 0 && !storesLoading}
         style={{
-          background: '#4CAF50',
+          background: (stores.length === 0 && !storesLoading) ? '#ccc' : '#4CAF50',
           color: '#fff',
           border: 'none',
           borderRadius: 8,
           padding: '12px 24px',
           fontWeight: 600,
-          cursor: 'pointer',
+          cursor: (stores.length === 0 && !storesLoading) ? 'not-allowed' : 'pointer',
           marginBottom: 20
         }}
       >
@@ -352,15 +327,15 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
 
           {stores.length === 0 && !storesLoading && (
             <div style={{ 
-              background: '#fff3e0', 
-              color: '#f57800', 
-              padding: 8, 
+              background: '#ffebee', 
+              color: '#c62828', 
+              padding: 12, 
               borderRadius: 6, 
               marginBottom: 12 
             }}>
-              ⚠️ Магазины не загружены. Проверьте консоль для деталей.
+              ⚠️ Магазины не загружены. Невозможно создать товар без привязки к магазину.
               <br />
-              <small>Загруженных магазинов: {stores.length}</small>
+              <small>Проверьте подключение к API или создайте магазины в разделе "Магазины".</small>
             </div>
           )}
 

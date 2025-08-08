@@ -244,6 +244,41 @@ export async function apiGetStores(token: string, page = 1, limit = 50, search?:
   }
 }
 
+export async function apiUpdateStore(token: string, storeId: number, storeData: {
+  name?: string;
+  address?: string;
+  ownerId?: number;
+}) {
+  console.log('🔄 Updating store:', storeId, 'with data:', storeData);
+  
+  try {
+    const response = await fetch(`${API_URL}/stores/${storeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(storeData),
+    });
+
+    console.log('📡 Update store API response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Update store error:', errorText);
+      throw new Error(`Ошибка обновления магазина: ${response.status} ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    console.log('✅ Store updated successfully:', responseData);
+    
+    return responseData;
+  } catch (error) {
+    console.error('❌ Exception in apiUpdateStore:', error);
+    throw error;
+  }
+}
+
 export async function apiGetCategories(token: string) {
   console.log('apiGetCategories called');
   try {

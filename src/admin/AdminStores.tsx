@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiGetStores, apiAssignStoreOwner } from '../api';
+import { apiGetStores, apiAssignStoreOwner, apiUpdateStore } from '../api';
 
 interface StoreOwner {
   id: number;
@@ -43,6 +43,13 @@ const AdminStores: React.FC<Props> = ({ onBack, token }) => {
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
   const [ownerIdInput, setOwnerIdInput] = useState('');
   const [assigningOwner, setAssigningOwner] = useState(false);
+  
+  // Состояния для редактирования магазина
+  const [editingStore, setEditingStore] = useState<Store | null>(null);
+  const [editStoreName, setEditStoreName] = useState('');
+  const [editStoreAddress, setEditStoreAddress] = useState('');
+  const [editStoreOwnerId, setEditStoreOwnerId] = useState('');
+  const [updatingStore, setUpdatingStore] = useState(false);
 
   // Загрузка магазинов
   const loadStores = async (page = 1, search = '') => {
@@ -112,6 +119,65 @@ const AdminStores: React.FC<Props> = ({ onBack, token }) => {
   const handleSearch = () => {
     setCurrentPage(1);
     loadStores(1, searchQuery);
+  };
+
+  // Открытие формы редактирования магазина
+  const handleEditStore = (store: Store) => {
+    setEditingStore(store);
+    setEditStoreName(store.name);
+    setEditStoreAddress(store.address);
+    setEditStoreOwnerId(store.ownerId ? store.ownerId.toString() : '');
+  };
+
+  // Обновление информации о магазине
+  const handleUpdateStore = async () => {
+    if (!editingStore || !editStoreName.trim() || !editStoreAddress.trim()) {
+      alert('Заполните название и адрес магазина');
+      return;
+    }
+
+    if (!token || token.trim() === '') {
+      alert('Ошибка: токен авторизации не найден');
+      return;
+    }
+
+    try {
+      setUpdatingStore(true);
+      
+      const updateData: { name: string; address: string; ownerId?: number } = {
+        name: editStoreName.trim(),
+        address: editStoreAddress.trim()
+      };
+
+      // Добавляем ownerId только если он указан
+      if (editStoreOwnerId.trim()) {
+        const ownerId = parseInt(editStoreOwnerId.trim());
+        if (!isNaN(ownerId)) {
+          updateData.ownerId = ownerId;
+        }
+      }
+
+      console.log('🔄 Updating store with data:', updateData);
+      
+      await apiUpdateStore(token, editingStore.id, updateData);
+      
+      // Перезагружаем список магазинов
+      await loadStores(currentPage, searchQuery);
+      
+      // Сбрасываем форму
+      setEditingStore(null);
+      setEditStoreName('');
+      setEditStoreAddress('');
+      setEditStoreOwnerId('');
+      
+      alert('Информация о магазине успешно обновлена!');
+      
+    } catch (err) {
+      console.error('Ошибка обновления магазина:', err);
+      alert('Ошибка при обновлении магазина: ' + (err instanceof Error ? err.message : 'Неизвестная ошибка'));
+    } finally {
+      setUpdatingStore(false);
+    }
   };
 
   // Загрузка данных при монтировании
@@ -336,23 +402,42 @@ const AdminStores: React.FC<Props> = ({ onBack, token }) => {
                       </div>
                     )}
 
-                    {/* Кнопка назначения владельца */}
-                    <button
-                      onClick={() => setSelectedStoreId(store.id)}
-                      style={{
-                        background: store.owner ? '#6c757d' : '#28a745',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '8px 12px',
-                        fontSize: 13,
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {store.owner ? '🔄 Изменить владельца' : '👤 Назначить владельца'}
-                    </button>
+                    {/* Кнопки управления магазином */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleEditStore(store)}
+                        style={{
+                          background: '#007bff',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '8px 12px',
+                          fontSize: 13,
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        ✏️ Редактировать
+                      </button>
+                      
+                      <button
+                        onClick={() => setSelectedStoreId(store.id)}
+                        style={{
+                          background: store.owner ? '#6c757d' : '#28a745',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '8px 12px',
+                          fontSize: 13,
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {store.owner ? '🔄 Изменить владельца' : '👤 Назначить владельца'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -406,6 +491,149 @@ const AdminStores: React.FC<Props> = ({ onBack, token }) => {
             </div>
           )}
         </>
+      )}
+
+      {/* Модальное окно редактирования магазина */}
+      {editingStore && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#fff',
+            borderRadius: 12,
+            padding: 24,
+            maxWidth: 500,
+            width: '90%',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            maxHeight: '80vh',
+            overflowY: 'auto'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: 20, fontWeight: 600 }}>
+              ✏️ Редактировать магазин
+            </h3>
+            
+            <p style={{ margin: '0 0 16px 0', color: '#666', fontSize: 14 }}>
+              Магазин ID: {editingStore.id}
+            </p>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
+                Название магазина *:
+              </label>
+              <input
+                type="text"
+                value={editStoreName}
+                onChange={(e) => setEditStoreName(e.target.value)}
+                placeholder="Введите название магазина"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  boxSizing: 'border-box'
+                }}
+                disabled={updatingStore}
+              />
+            </div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
+                Адрес магазина *:
+              </label>
+              <input
+                type="text"
+                value={editStoreAddress}
+                onChange={(e) => setEditStoreAddress(e.target.value)}
+                placeholder="Введите адрес магазина"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  boxSizing: 'border-box'
+                }}
+                disabled={updatingStore}
+              />
+            </div>
+            
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
+                ID владельца (необязательно):
+              </label>
+              <input
+                type="number"
+                value={editStoreOwnerId}
+                onChange={(e) => setEditStoreOwnerId(e.target.value)}
+                placeholder="Введите ID владельца или оставьте пустым"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #ddd',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  boxSizing: 'border-box'
+                }}
+                disabled={updatingStore}
+              />
+              <small style={{ color: '#666', fontSize: 12, marginTop: 4, display: 'block' }}>
+                Оставьте пустым, чтобы не изменять владельца
+              </small>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setEditingStore(null);
+                  setEditStoreName('');
+                  setEditStoreAddress('');
+                  setEditStoreOwnerId('');
+                }}
+                disabled={updatingStore}
+                style={{
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 16px',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: updatingStore ? 'not-allowed' : 'pointer',
+                  opacity: updatingStore ? 0.6 : 1
+                }}
+              >
+                Отмена
+              </button>
+              
+              <button
+                onClick={handleUpdateStore}
+                disabled={updatingStore || !editStoreName.trim() || !editStoreAddress.trim()}
+                style={{
+                  background: (updatingStore || !editStoreName.trim() || !editStoreAddress.trim()) ? '#e9ecef' : '#007bff',
+                  color: (updatingStore || !editStoreName.trim() || !editStoreAddress.trim()) ? '#6c757d' : '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '10px 16px',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: (updatingStore || !editStoreName.trim() || !editStoreAddress.trim()) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {updatingStore ? 'Сохранение...' : 'Сохранить изменения'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Модальное окно назначения владельца */}
