@@ -75,6 +75,7 @@ export async function apiUpdateProduct(
     description?: string;
     storeId?: number;
     categoryId?: number;
+    unit?: string; // добавлено
   }
 ) {
   const resp = await fetch(`${API_URL}/products/${productId}`, {
@@ -526,6 +527,7 @@ export async function apiCreateProduct(
     categoryId?: number;
     image?: string;
     description?: string;
+    unit?: string; // добавлено
   }
 ) {
   const response = await fetch(`${API_URL}/products`, {

@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef, useCallback } from "react";
 import { apiGetUser, apiGetCategories, apiGetProducts, apiGetMyOrders } from '../api';
 import ProfilePage from './ProfilePage';
@@ -149,6 +148,7 @@ interface Product {
   storeId: number;
   image?: string | null;
   store?: { id: number; name: string; address: string };
+  unit?: string; // добавлено
 }
 
 
@@ -160,6 +160,15 @@ interface CartItem {
 }
 
 const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
+  // helper форматирования цены, чтобы убрать переносы
+  const formatPrice = (value: number) => {
+    try {
+      return value.toLocaleString('ru-RU');
+    } catch {
+      return String(value);
+    }
+  };
+
   // Добавляем CSS анимацию для спиннера
   const spinnerStyle = `
     @keyframes spin {
@@ -362,11 +371,13 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
     
     apiGetProducts(undefined, 1, 50, filters)
       .then((data) => {
-        if (Array.isArray(data)) {
-          setProducts(data);
-        } else {
-          setProducts(data.products || []);
-        }
+        // нормализуем список и подставляем unit по умолчанию
+        const rawList = Array.isArray(data) ? data : (data.products || []);
+        const normalized = rawList.map((p: any) => ({
+          ...p,
+          unit: (p.unit === null || p.unit === undefined || p.unit === '') ? 'шт' : p.unit
+        }));
+        setProducts(normalized);
         setError('');
       })
       .catch(e => setError(e.message))
@@ -899,9 +910,12 @@ const CatalogPage: React.FC<{ token: string }> = ({ token }) => {
                       <span style={{ fontSize: 38 }}>🛒</span>
                     )}
                   </div>
-                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{p.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>{p.name}</div>
                   <div style={{ fontSize: 13, color: '#888', marginBottom: 8 }}>{p.store ? p.store.name : ''}</div>
-                  <div style={{ fontWeight: 700, color: '#6BCB3D', fontSize: 16, marginBottom: 8 }}>{p.price}₸</div>
+                  <div style={{ fontWeight: 700, color: '#6BCB3D', fontSize: 16, marginBottom: 8, lineHeight: 1 }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>{formatPrice(p.price)}₸</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 4, opacity: 0.9 }}>{p.unit || 'шт'}</span>
+                  </div>
                   {/* Блок управления количеством товара в корзине */}
                   {(() => {
                     const cartItem = cart.find(i => i.id === p.id);

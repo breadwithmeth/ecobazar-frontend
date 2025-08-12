@@ -22,6 +22,7 @@ interface Product {
   categoryId?: number;
   store?: Store;
   category?: Category;
+  unit?: string; // добавлено
 }
 
 interface ProductFormData {
@@ -31,6 +32,7 @@ interface ProductFormData {
   categoryId: string;
   image: string;
   description: string;
+  unit: string; // добавлено
 }
 
 interface Props {
@@ -63,7 +65,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
     storeId: '',
     categoryId: '',
     image: '',
-    description: ''
+    description: '',
+    unit: 'шт' // значение по умолчанию
   });
   
   // Форма для редактирования
@@ -73,7 +76,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
     storeId: '',
     categoryId: '',
     image: '',
-    description: ''
+    description: '',
+    unit: 'шт'
   });
 
   // Загрузка данных
@@ -96,7 +100,12 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
       // Обработка продуктов
       if (productsResponse.status === 'fulfilled') {
         const productsData = productsResponse.value;
-        setProducts(Array.isArray(productsData) ? productsData : (productsData?.products || []));
+        const list = Array.isArray(productsData) ? productsData : (productsData?.products || []);
+        const normalized = list.map((p: any) => ({
+          ...p,
+          unit: (p.unit === null || p.unit === undefined || p.unit === '') ? 'шт' : p.unit
+        }));
+        setProducts(normalized);
       } else {
         console.error('Error loading products:', productsResponse.reason);
         setProducts([]);
@@ -163,7 +172,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         storeId: parseInt(newProduct.storeId),
         ...(newProduct.categoryId && { categoryId: parseInt(newProduct.categoryId) }),
         ...(newProduct.image.trim() && { image: newProduct.image.trim() }),
-        ...(newProduct.description.trim() && { description: newProduct.description.trim() })
+        ...(newProduct.description.trim() && { description: newProduct.description.trim() }),
+        unit: newProduct.unit
       };
 
       await apiCreateProduct(token, productData);
@@ -175,7 +185,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         storeId: '',
         categoryId: '',
         image: '',
-        description: ''
+        description: '',
+        unit: 'шт'
       });
       setShowCreateForm(false);
       loadData();
@@ -195,7 +206,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
       storeId: product.storeId.toString(),
       categoryId: product.categoryId?.toString() || '',
       image: product.image || '',
-      description: product.description || ''
+      description: product.description || '',
+      unit: product.unit || 'шт'
     });
     setEditError('');
   };
@@ -218,7 +230,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         storeId: parseInt(editForm.storeId),
         ...(editForm.categoryId && { categoryId: parseInt(editForm.categoryId) }),
         image: editForm.image.trim() || undefined,
-        description: editForm.description.trim() || undefined
+        description: editForm.description.trim() || undefined,
+        unit: editForm.unit
       };
 
       await apiUpdateProduct(token, editingProduct.id, updateData);
@@ -414,6 +427,16 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
             />
           </div>
 
+          <select
+            value={newProduct.unit}
+            onChange={(e) => setNewProduct({ ...newProduct, unit: e.target.value })}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+          >
+            <option value="шт">шт</option>
+            <option value="кг">кг</option>
+            <option value="л">л</option>
+          </select>
+
           <button
             onClick={handleCreateProduct}
             disabled={createLoading}
@@ -463,7 +486,7 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
               <div style={{ flex: 1 }}>
                 <h4 style={{ margin: '0 0 8px 0', fontSize: 16 }}>{product.name}</h4>
                 <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
-                  Цена: <strong>{product.price}₸</strong>
+                  Цена: <strong>{product.price}₸ / {product.unit || 'шт'}</strong>
                 </div>
                 <div style={{ fontSize: 14, color: '#666', marginBottom: 4 }}>
                   Магазин: {stores.find(s => s.id === product.storeId)?.name || 'Неизвестно'}
@@ -622,6 +645,16 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
                 style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd', resize: 'vertical' }}
               />
             </div>
+
+            <select
+              value={editForm.unit}
+              onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ddd' }}
+            >
+              <option value="шт">шт</option>
+              <option value="кг">кг</option>
+              <option value="л">л</option>
+            </select>
 
             <div style={{ display: 'flex', gap: 12 }}>
               <button
