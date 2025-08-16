@@ -23,6 +23,7 @@ interface Product {
   store?: Store;
   category?: Category;
   unit?: string; // добавлено
+  isVisible?: boolean; // добавлено
 }
 
 interface ProductFormData {
@@ -33,6 +34,7 @@ interface ProductFormData {
   image: string;
   description: string;
   unit: string; // добавлено
+  isVisible: boolean; // добавлено
 }
 
 interface Props {
@@ -66,7 +68,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
     categoryId: '',
     image: '',
     description: '',
-    unit: 'шт' // значение по умолчанию
+    unit: 'шт', // значение по умолчанию
+    isVisible: true,
   });
   
   // Форма для редактирования
@@ -77,7 +80,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
     categoryId: '',
     image: '',
     description: '',
-    unit: 'шт'
+    unit: 'шт',
+    isVisible: true,
   });
 
   // Загрузка данных
@@ -101,9 +105,10 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
       if (productsResponse.status === 'fulfilled') {
         const productsData = productsResponse.value;
         const list = Array.isArray(productsData) ? productsData : (productsData?.products || []);
-        const normalized = list.map((p: any) => ({
+        const normalized: Product[] = list.map((p: any) => ({
           ...p,
-          unit: (p.unit === null || p.unit === undefined || p.unit === '') ? 'шт' : p.unit
+          unit: (p.unit === null || p.unit === undefined || p.unit === '') ? 'шт' : p.unit,
+          isVisible: typeof p.isVisible === 'boolean' ? p.isVisible : true,
         }));
         setProducts(normalized);
       } else {
@@ -173,7 +178,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         ...(newProduct.categoryId && { categoryId: parseInt(newProduct.categoryId) }),
         ...(newProduct.image.trim() && { image: newProduct.image.trim() }),
         ...(newProduct.description.trim() && { description: newProduct.description.trim() }),
-        unit: newProduct.unit
+        unit: newProduct.unit,
+        // isVisible специально не отправляем при создании (можно добавить при необходимости)
       };
 
       await apiCreateProduct(token, productData);
@@ -186,7 +192,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         categoryId: '',
         image: '',
         description: '',
-        unit: 'шт'
+        unit: 'шт',
+        isVisible: true,
       });
       setShowCreateForm(false);
       loadData();
@@ -207,7 +214,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
       categoryId: product.categoryId?.toString() || '',
       image: product.image || '',
       description: product.description || '',
-      unit: product.unit || 'шт'
+      unit: product.unit || 'шт',
+      isVisible: typeof product.isVisible === 'boolean' ? product.isVisible : true,
     });
     setEditError('');
   };
@@ -231,7 +239,8 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
         ...(editForm.categoryId && { categoryId: parseInt(editForm.categoryId) }),
         image: editForm.image.trim() || undefined,
         description: editForm.description.trim() || undefined,
-        unit: editForm.unit
+        unit: editForm.unit,
+        isVisible: editForm.isVisible,
       };
 
       await apiUpdateProduct(token, editingProduct.id, updateData);
@@ -656,7 +665,7 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
               <option value="л">л</option>
             </select>
 
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
               <button
                 onClick={handleUpdateProduct}
                 disabled={editLoading}
@@ -689,6 +698,17 @@ const AdminProducts: React.FC<Props> = ({ token, onBack }) => {
               >
                 Отмена
               </button>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={editForm.isVisible}
+                  onChange={(e) => setEditForm({ ...editForm, isVisible: e.target.checked })}
+                />
+                Показывать товар в каталоге
+              </label>
             </div>
           </div>
         </div>

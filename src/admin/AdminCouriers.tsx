@@ -40,7 +40,32 @@ const AdminCouriers: React.FC<AdminCouriersProps> = ({ token }) => {
     try {
       setLoading(true);
       const data = await apiGetCouriers(token, { limit: 50 });
-      setCouriers(data.couriers);
+      // Нормализация разных форматов ответа
+      const rawList = Array.isArray((data as any)?.couriers)
+        ? (data as any).couriers
+        : Array.isArray((data as any)?.data?.couriers)
+        ? (data as any).data.couriers
+        : Array.isArray((data as any)?.data)
+        ? (data as any).data
+        : Array.isArray(data)
+        ? (data as any)
+        : [];
+
+      const safeList: Courier[] = rawList.map((c: any) => ({
+        id: c.id,
+        telegram_user_id: c.telegram_user_id ?? c.telegramUserId ?? '',
+        name: c.name ?? c.fullName ?? 'Без имени',
+        phone_number: c.phone_number ?? c.phone ?? '',
+        createdAt: c.createdAt ?? c.created_at ?? new Date().toISOString(),
+        stats: {
+          totalDelivered: c.stats?.totalDelivered ?? c.totalDelivered ?? 0,
+          activeOrders: c.stats?.activeOrders ?? c.activeOrders ?? 0,
+          rating: c.stats?.rating ?? c.rating ?? 0,
+          lastDelivery: c.stats?.lastDelivery ?? c.lastDelivery ?? null,
+        },
+      }));
+
+      setCouriers(safeList);
       setError('');
     } catch (e: any) {
       setError(e.message || 'Ошибка загрузки курьеров');
@@ -130,7 +155,7 @@ const AdminCouriers: React.FC<AdminCouriersProps> = ({ token }) => {
               }}
             >
               <option value="">Выберите курьера</option>
-              {couriers.map(courier => (
+              {couriers && couriers.map(courier => (
                 <option key={courier.id} value={courier.id}>
                   {courier.name} (Активных: {courier.stats.activeOrders})
                 </option>
@@ -174,7 +199,7 @@ const AdminCouriers: React.FC<AdminCouriersProps> = ({ token }) => {
 
       {/* Список курьеров */}
       <div style={{ display: 'grid', gap: 16 }}>
-        {couriers.map(courier => (
+  {(couriers || []).map(courier => (
           <div
             key={courier.id}
             style={{

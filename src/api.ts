@@ -75,7 +75,8 @@ export async function apiUpdateProduct(
     description?: string;
     storeId?: number;
     categoryId?: number;
-    unit?: string; // добавлено
+    unit?: string; // добавлено ранее
+    isVisible?: boolean; // добавлено
   }
 ) {
   const resp = await fetch(`${API_URL}/products/${productId}`, {
@@ -527,7 +528,8 @@ export async function apiCreateProduct(
     categoryId?: number;
     image?: string;
     description?: string;
-    unit?: string; // добавлено
+    unit?: string; // добавлено ранее
+    isVisible?: boolean; // добавлено (опционально)
   }
 ) {
   const response = await fetch(`${API_URL}/products`, {
@@ -751,6 +753,35 @@ export async function apiGetSalesReport(
   if (params?.categoryId) searchParams.append('categoryId', params.categoryId.toString());
 
   const response = await fetch(`${API_URL}/admin/reports/sales?${searchParams}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleApiResponse(response);
+}
+
+// Получить отчет по заказам (ADMIN) с фильтрами и агрегациями
+export async function apiGetAdminOrderReport(
+  token: string,
+  params?: {
+    from?: string; // ISO datetime
+    to?: string; // ISO datetime
+    storeId?: number;
+    courierId?: number;
+    status?: 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED';
+    deliveryType?: 'ASAP' | 'SCHEDULED';
+    groupBy?: 'day' | 'month';
+  }
+) {
+  const sp = new URLSearchParams();
+  if (params?.from) sp.append('from', params.from);
+  if (params?.to) sp.append('to', params.to);
+  if (params?.storeId) sp.append('storeId', String(params.storeId));
+  if (params?.courierId) sp.append('courierId', String(params.courierId));
+  if (params?.status) sp.append('status', params.status);
+  if (params?.deliveryType) sp.append('deliveryType', params.deliveryType);
+  if (params?.groupBy) sp.append('groupBy', params.groupBy);
+
+  const url = `${API_URL}/orders/admin/report${sp.toString() ? `?${sp.toString()}` : ''}`;
+  const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return handleApiResponse(response);

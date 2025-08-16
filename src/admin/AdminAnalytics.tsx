@@ -1,27 +1,69 @@
 import React, { useState, useEffect } from 'react';
-import { apiGetSalesReport, apiGetSecurityStats } from '../api';
+import { apiGetAdminOrderReport, apiGetSecurityStats } from '../api';
 
 interface AdminAnalyticsProps {
   token: string;
 }
 
+type GroupBy = 'day' | 'month';
+type OrderStatus = 'NEW' | 'WAITING_PAYMENT' | 'PREPARING' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED';
+type DeliveryType = 'ASAP' | 'SCHEDULED';
+
+interface AdminOrdersReportTotals {
+  orders: number;
+  revenue: number;
+  items: number;
+  aov: number; // average order value
+}
+
+interface AdminOrdersReport {
+  range?: { from: string; to: string };
+  filters?: { groupBy?: GroupBy };
+  totals: AdminOrdersReportTotals;
+  byStatus?: Array<{ status: OrderStatus; count: number; revenue?: number }>;
+  byStore?: Array<{ storeId: number; storeName?: string; orders: number; items?: number; revenue: number }>;
+  byCourier?: Array<{ courierId: number | null; courierName?: string; orders: number; revenue: number }>;
+  daily?: Array<{ date: string; orders: number; revenue: number; items?: number }>; // date = YYYY-MM-DD или YYYY-MM
+}
+
 const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
-  const [salesReport, setSalesReport] = useState<any>(null);
+  const [ordersReport, setOrdersReport] = useState<AdminOrdersReport | null>(null);
   const [securityStats, setSecurityStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Вычисляем дефолтные даты (последние 30 дней)
+  const now = new Date();
+  const toDefault = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const fromDefault = new Date(toDefault.getTime() - 29 * 24 * 60 * 60 * 1000); // включая сегодняшний день
+
   const [reportParams, setReportParams] = useState({
-    period: 'month' as 'day' | 'week' | 'month' | 'year',
-    dateFrom: '',
-    dateTo: ''
+    fromDate: fromDefault.toISOString().slice(0, 10), // YYYY-MM-DD
+    toDate: toDefault.toISOString().slice(0, 10),
+    storeId: '' as string,
+    courierId: '' as string,
+    status: '' as '' | OrderStatus,
+    deliveryType: '' as '' | DeliveryType,
+    groupBy: 'day' as GroupBy,
   });
 
-  // Загрузка отчета по продажам
-  const loadSalesReport = async () => {
+  // Загрузка отчета по заказам (новый эндпоинт)
+  const loadOrdersReport = async () => {
     try {
       setLoading(true);
-      const data = await apiGetSalesReport(token, reportParams);
-      setSalesReport(data);
+      // Преобразуем даты UI в ISO (00:00 и 23:59:59.999)
+      const fromIso = new Date(`${reportParams.fromDate}T00:00:00.000Z`).toISOString();
+      const toIso = new Date(`${reportParams.toDate}T23:59:59.999Z`).toISOString();
+      const data = await apiGetAdminOrderReport(token, {
+        from: fromIso,
+        to: toIso,
+        groupBy: reportParams.groupBy,
+        storeId: reportParams.storeId ? Number(reportParams.storeId) : undefined,
+        courierId: reportParams.courierId ? Number(reportParams.courierId) : undefined,
+        status: reportParams.status || undefined,
+        deliveryType: reportParams.deliveryType || undefined,
+      });
+  setOrdersReport(data as AdminOrdersReport);
       setError('');
     } catch (e: any) {
       setError(e.message || 'Ошибка загрузки отчета');
@@ -41,8 +83,9 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
   };
 
   useEffect(() => {
-    loadSalesReport();
+    loadOrdersReport();
     loadSecurityStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatCurrency = (amount: number) => {
@@ -57,9 +100,20 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
     return new Date(dateString).toLocaleDateString('ru-RU');
   };
 
+  const formatPeriodLabel = (value: string) => {
+    // value: YYYY-MM-DD (day) или YYYY-MM (month)
+    if (reportParams.groupBy === 'day') return formatDate(value);
+    try {
+      const d = new Date(value + '-01T00:00:00Z');
+      return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    } catch {
+      return value;
+    }
+  };
+
   return (
     <div style={{ padding: 20 }}>
-      <h2>Аналитика и отчеты</h2>
+  <h2>Аналитика и отчеты</h2>
 
       {error && (
         <div style={{ 
@@ -80,71 +134,87 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
         borderRadius: 8, 
         marginBottom: 20 
       }}>
-        <h3>Параметры отчета по продажам</h3>
+        <h3>Параметры отчета по заказам</h3>
         <div style={{ display: 'flex', gap: 16, alignItems: 'end', flexWrap: 'wrap' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>
-              Период:
-            </label>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>Дата начала:</label>
+            <input
+              type="date"
+              value={reportParams.fromDate}
+              onChange={(e) => setReportParams(prev => ({ ...prev, fromDate: e.target.value }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>Дата окончания:</label>
+            <input
+              type="date"
+              value={reportParams.toDate}
+              onChange={(e) => setReportParams(prev => ({ ...prev, toDate: e.target.value }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14 }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>groupBy:</label>
             <select
-              value={reportParams.period}
-              onChange={(e) => setReportParams(prev => ({ 
-                ...prev, 
-                period: e.target.value as any 
-              }))}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                fontSize: 14
-              }}
+              value={reportParams.groupBy}
+              onChange={(e) => setReportParams(prev => ({ ...prev, groupBy: e.target.value as GroupBy }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14 }}
             >
-              <option value="day">День</option>
-              <option value="week">Неделя</option>
-              <option value="month">Месяц</option>
-              <option value="year">Год</option>
+              <option value="day">day</option>
+              <option value="month">month</option>
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>
-              Дата начала:
-            </label>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>storeId:</label>
             <input
-              type="date"
-              value={reportParams.dateFrom}
-              onChange={(e) => setReportParams(prev => ({ 
-                ...prev, 
-                dateFrom: e.target.value 
-              }))}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                fontSize: 14
-              }}
+              type="number"
+              placeholder="например 5"
+              value={reportParams.storeId}
+              onChange={(e) => setReportParams(prev => ({ ...prev, storeId: e.target.value }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14, width: 120 }}
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>
-              Дата окончания:
-            </label>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>courierId:</label>
             <input
-              type="date"
-              value={reportParams.dateTo}
-              onChange={(e) => setReportParams(prev => ({ 
-                ...prev, 
-                dateTo: e.target.value 
-              }))}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                fontSize: 14
-              }}
+              type="number"
+              placeholder="например 12"
+              value={reportParams.courierId}
+              onChange={(e) => setReportParams(prev => ({ ...prev, courierId: e.target.value }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14, width: 120 }}
             />
           </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>status:</label>
+            <select
+              value={reportParams.status}
+              onChange={(e) => setReportParams(prev => ({ ...prev, status: e.target.value as any }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14 }}
+            >
+              <option value="">Все</option>
+              <option value="NEW">NEW</option>
+              <option value="WAITING_PAYMENT">WAITING_PAYMENT</option>
+              <option value="PREPARING">PREPARING</option>
+              <option value="DELIVERING">DELIVERING</option>
+              <option value="DELIVERED">DELIVERED</option>
+              <option value="CANCELLED">CANCELLED</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 14, marginBottom: 4 }}>deliveryType:</label>
+            <select
+              value={reportParams.deliveryType}
+              onChange={(e) => setReportParams(prev => ({ ...prev, deliveryType: e.target.value as any }))}
+              style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #ccc', fontSize: 14 }}
+            >
+              <option value="">Все</option>
+              <option value="ASAP">ASAP</option>
+              <option value="SCHEDULED">SCHEDULED</option>
+            </select>
+          </div>
           <button
-            onClick={loadSalesReport}
+            onClick={loadOrdersReport}
             disabled={loading}
             style={{
               background: '#2196f3',
@@ -162,15 +232,15 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
       </div>
 
       <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-        {/* Отчет по продажам */}
-        {salesReport && (
+        {/* Отчет по заказам */}
+        {ordersReport && (
           <div style={{
             background: 'white',
             border: '1px solid #e0e0e0',
             borderRadius: 8,
             padding: 20
           }}>
-            <h3 style={{ margin: '0 0 16px 0' }}>📊 Отчет по продажам</h3>
+            <h3 style={{ margin: '0 0 16px 0' }}>📊 Отчет по заказам</h3>
             
             {/* Основные показатели */}
             <div style={{ marginBottom: 20 }}>
@@ -178,71 +248,92 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
               <div style={{ display: 'grid', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Всего заказов:</span>
-                  <strong style={{ color: '#2196f3' }}>{salesReport.summary.totalOrders}</strong>
+                  <strong style={{ color: '#2196f3' }}>{ordersReport.totals?.orders ?? 0}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Общая выручка:</span>
                   <strong style={{ color: '#4caf50' }}>
-                    {formatCurrency(salesReport.summary.totalRevenue)}
+                    {formatCurrency(ordersReport.totals?.revenue ?? 0)}
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Средний чек:</span>
-                  <strong>{formatCurrency(salesReport.summary.averageOrderValue)}</strong>
+                  <strong>{formatCurrency(ordersReport.totals?.aov ?? 0)}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Товарных позиций всего:</span>
+                  <strong>{ordersReport.totals?.items ?? 0}</strong>
                 </div>
               </div>
             </div>
 
-            {/* Тренды */}
-            {salesReport.trends && (
-              <div style={{ marginBottom: 20 }}>
-                <h4 style={{ fontSize: 16, marginBottom: 12 }}>Тренды</h4>
+            {/* Разбивка по статусам */}
+            {ordersReport.byStatus && ordersReport.byStatus.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ fontSize: 16, marginBottom: 12 }}>По статусам</h4>
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Рост заказов:</span>
-                    <strong style={{ 
-                      color: salesReport.trends.ordersGrowth.startsWith('+') ? '#4caf50' : '#f44336' 
-                    }}>
-                      {salesReport.trends.ordersGrowth}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Рост выручки:</span>
-                    <strong style={{ 
-                      color: salesReport.trends.revenueGrowth.startsWith('+') ? '#4caf50' : '#f44336' 
-                    }}>
-                      {salesReport.trends.revenueGrowth}
-                    </strong>
-                  </div>
+                  {ordersReport.byStatus.map((row, idx) => (
+                    <div key={row.status + idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: idx < (ordersReport.byStatus?.length || 0) - 1 ? '1px solid #f0f0f0' : 'none', padding: '6px 0' }}>
+                      <span style={{ fontSize: 14 }}>{row.status}</span>
+                      <span style={{ fontWeight: 600 }}>{row.count}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Топ товаров */}
-            {salesReport.topProducts && salesReport.topProducts.length > 0 && (
-              <div>
-                <h4 style={{ fontSize: 16, marginBottom: 12 }}>Топ товаров</h4>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {salesReport.topProducts.slice(0, 5).map((product: any, index: number) => (
-                    <div key={product.id} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between',
-                      padding: '8px 0',
-                      borderBottom: index < 4 ? '1px solid #f0f0f0' : 'none'
-                    }}>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 500 }}>{product.name}</div>
-                        <div style={{ fontSize: 12, color: '#666' }}>
-                          Продаж: {product.sales}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#4caf50' }}>
-                          {formatCurrency(product.revenue)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+            {/* Разбивка по магазинам */}
+            {ordersReport.byStore && ordersReport.byStore.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ fontSize: 16, marginBottom: 12 }}>По магазинам</h4>
+                <div style={{ maxHeight: 220, overflow: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f5f5f5' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #e0e0e0' }}>Магазин</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', borderBottom: '1px solid #e0e0e0' }}>Заказы</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', borderBottom: '1px solid #e0e0e0' }}>Товары</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', borderBottom: '1px solid #e0e0e0' }}>Выручка</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordersReport.byStore.map((s, idx) => (
+                        <tr key={s.storeId}>
+                          <td style={{ padding: '8px 12px', borderBottom: idx < ordersReport.byStore!.length - 1 ? '1px solid #f0f0f0' : 'none' }}>{s.storeName || `Store #${s.storeId}`}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', borderBottom: idx < ordersReport.byStore!.length - 1 ? '1px solid #f0f0f0' : 'none' }}>{s.orders}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', borderBottom: idx < ordersReport.byStore!.length - 1 ? '1px solid #f0f0f0' : 'none' }}>{s.items ?? 0}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', borderBottom: idx < ordersReport.byStore!.length - 1 ? '1px solid #f0f0f0' : 'none', fontWeight: 600, color: '#4caf50' }}>{formatCurrency(s.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Разбивка по курьерам */}
+            {ordersReport.byCourier && ordersReport.byCourier.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ fontSize: 16, marginBottom: 12 }}>По курьерам</h4>
+                <div style={{ maxHeight: 220, overflow: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f5f5f5' }}>
+                        <th style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #e0e0e0' }}>Курьер</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', borderBottom: '1px solid #e0e0e0' }}>Заказы</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right', borderBottom: '1px solid #e0e0e0' }}>Выручка</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordersReport.byCourier.map((c, idx) => (
+                        <tr key={c.courierId}>
+                          <td style={{ padding: '8px 12px', borderBottom: idx < ordersReport.byCourier!.length - 1 ? '1px solid #f0f0f0' : 'none' }}>{c.courierName || `Courier #${c.courierId}`}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', borderBottom: idx < ordersReport.byCourier!.length - 1 ? '1px solid #f0f0f0' : 'none' }}>{c.orders}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', borderBottom: idx < ordersReport.byCourier!.length - 1 ? '1px solid #f0f0f0' : 'none', fontWeight: 600, color: '#4caf50' }}>{formatCurrency(c.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -354,8 +445,8 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
         )}
       </div>
 
-      {/* Дневная статистика продаж */}
-      {salesReport && salesReport.dailyStats && salesReport.dailyStats.length > 0 && (
+    {/* Динамика по периодам */}
+    {ordersReport && ordersReport.daily && ordersReport.daily.length > 0 && (
         <div style={{
           background: 'white',
           border: '1px solid #e0e0e0',
@@ -363,13 +454,13 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
           padding: 20,
           marginTop: 20
         }}>
-          <h3 style={{ margin: '0 0 16px 0' }}>📈 Дневная динамика</h3>
+      <h3 style={{ margin: '0 0 16px 0' }}>📈 Динамика ({reportParams.groupBy})</h3>
           <div style={{ maxHeight: 200, overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f5f5f5' }}>
                   <th style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #e0e0e0' }}>
-                    Дата
+          Период
                   </th>
                   <th style={{ padding: '8px 12px', textAlign: 'right', borderBottom: '1px solid #e0e0e0' }}>
                     Заказы
@@ -380,29 +471,29 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ token }) => {
                 </tr>
               </thead>
               <tbody>
-                {salesReport.dailyStats.map((day: any, index: number) => (
-                  <tr key={day.date}>
+        {ordersReport.daily.map((row, index: number) => (
+          <tr key={row.date}>
                     <td style={{ 
                       padding: '8px 12px', 
-                      borderBottom: index < salesReport.dailyStats.length - 1 ? '1px solid #f0f0f0' : 'none' 
+            borderBottom: index < ordersReport.daily!.length - 1 ? '1px solid #f0f0f0' : 'none' 
                     }}>
-                      {formatDate(day.date)}
+            {formatPeriodLabel(row.date)}
                     </td>
                     <td style={{ 
                       padding: '8px 12px', 
                       textAlign: 'right',
-                      borderBottom: index < salesReport.dailyStats.length - 1 ? '1px solid #f0f0f0' : 'none' 
+            borderBottom: index < ordersReport.daily!.length - 1 ? '1px solid #f0f0f0' : 'none' 
                     }}>
-                      {day.orders}
+            {row.orders}
                     </td>
                     <td style={{ 
                       padding: '8px 12px', 
                       textAlign: 'right',
-                      borderBottom: index < salesReport.dailyStats.length - 1 ? '1px solid #f0f0f0' : 'none',
+            borderBottom: index < ordersReport.daily!.length - 1 ? '1px solid #f0f0f0' : 'none',
                       fontWeight: 600,
                       color: '#4caf50'
                     }}>
-                      {formatCurrency(day.revenue)}
+            {formatCurrency(row.revenue)}
                     </td>
                   </tr>
                 ))}
