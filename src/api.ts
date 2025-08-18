@@ -1,4 +1,4 @@
-const API_URL = process.env.REACT_APP_API_URL;
+const API_URL = "https://eco-b.drawbridge.kz/api";
 
 // Типы для API v2.0
 interface ApiResponse<T> {
