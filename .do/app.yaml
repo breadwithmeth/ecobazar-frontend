@@ -19,6 +19,6 @@ services:
   - key: PORT
     value: "8080"
   - key: REACT_APP_API_URL
-    value: https://eco-b-6sgyz.ondigitalocean.app/api
+    value: https://eco-b.drawbridge.kz/api
   - key: REACT_APP_TEST_VALUE
     value: "2"
