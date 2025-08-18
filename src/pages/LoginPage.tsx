@@ -8,12 +8,12 @@ const LoginPage: React.FC<{ userId: number }> = ({ userId }) => (
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    background: '#f7f7f7',
-    color: '#222',
+    background: '#313131',
+    color: '#fff',
     paddingBottom: 64,
   }}>
     <div style={{
-      background: '#fff',
+      background: '#515151',
       borderRadius: 20,
       boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       padding: '32px 24px',
