@@ -129,6 +129,78 @@ const TelegramMiniApp: React.FC = () => {
     }
   }, [userId, token, page]);
 
+  // Вспомогательные функции
+  const getTgWebApp = (): TelegramWebApp | undefined => {
+    const w = window as any;
+    return w?.Telegram?.WebApp || w?.parent?.Telegram?.WebApp;
+  };
+
+  const extractUserId = (): number | null => {
+    const tg = getTgWebApp();
+    if (tg?.initDataUnsafe?.user?.id) return Number(tg.initDataUnsafe.user.id);
+
+    // Пытаемся вытащить из initData (строка querystring)
+    const initData = (tg as any)?.initData as string | undefined;
+    if (initData && typeof initData === 'string') {
+      try {
+        const params = new URLSearchParams(initData);
+        const userStr = params.get('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          if (user?.id) return Number(user.id);
+        }
+      } catch {}
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    // ...existing debug build...
+    const qs = new URLSearchParams(window.location.search);
+    const debugFromQuery = Number(qs.get('debugUser')) || undefined;
+    const debugFromLocal = Number(localStorage.getItem('debugUserId') || '') || undefined;
+    const debugFromEnv = Number(process.env.REACT_APP_DEBUG_TG_USER_ID) || undefined;
+
+    const setDebugUser = (id: number) => {
+      if (!id) return;
+      setUserId(id);
+      setIsInitialized(true);
+      localStorage.setItem('debugUserId', String(id));
+    };
+
+    // Говорим Telegram, что мы готовы
+    try { getTgWebApp()?.ready?.(); } catch {}
+
+    // Мгновенная попытка
+    const idNow = extractUserId();
+    if (idNow) {
+      setUserId(idNow);
+    } else if (debugFromQuery) {
+      setDebugUser(debugFromQuery);
+      return;
+    } else if (debugFromLocal) {
+      setDebugUser(debugFromLocal);
+      return;
+    }
+
+    // Ретраи до 5 секунд (каждые 100мс)
+    let tries = 0;
+    const interval = setInterval(() => {
+      const id = extractUserId();
+      if (id) {
+        setUserId(id);
+        clearInterval(interval);
+        setIsInitialized(true);
+      } else if (++tries >= 50) {
+        clearInterval(interval);
+        setIsInitialized(true);
+        if (debugFromEnv) setDebugUser(debugFromEnv);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, []);
+
   if (!userId && !isInitialized) {
     return (
       <div style={{ padding: 20, fontFamily: 'Arial, sans-serif' }}>
@@ -162,7 +234,15 @@ const TelegramMiniApp: React.FC = () => {
         {/* Кнопка для тестирования */}
         <button
           onClick={() => {
-            console.log('Manual test userId set');
+            const qs = new URLSearchParams(window.location.search);
+            const id =
+              Number(qs.get('debugUser')) ||
+              Number(localStorage.getItem('debugUserId') || '') ||
+              Number(process.env.REACT_APP_DEBUG_TG_USER_ID) ||
+              1;
+            localStorage.setItem('debugUserId', String(id));
+            setUserId(id);
+            setIsInitialized(true);
           }}
           style={{
             background: '#2196F3',
